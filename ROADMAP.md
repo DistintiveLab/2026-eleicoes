@@ -37,11 +37,10 @@ Projeto: painel analítico das Eleições 2026 centrado em R, com banco de dados
 
 ## 2. Decisões de arquitetura (proposta a validar na Fase 0)
 
-- **Núcleo em R**, pipeline reprodutível com `{targets}` + `{renv}` (conforme diretriz do README: "R centrado").
-- **Banco de dados `eleicoes`**:
-  - Fase A (MVP): **DuckDB** (`eleicoes.duckdb`) — zero infraestrutura, ótimo para leitura analítica e para os volumes envolvidos (detalhe por seção BR completo tem vários GB).
-  - Fase B (se multiusuário/web): **PostgreSQL + PostGIS**, database nomeada `eleicoes`. Os scripts devem ser agnósticos via `{DBI}` para facilitar a migração.
-- **Painel**: Shiny (`{bslib}` + `{leaflet}` + `{plotly}`/`{ggplot2}`) ou Quarto dashboard para relatórios estáticos + Shiny para o painel vivo.
+- **Núcleo em R**, pipeline reprodutível (conforme diretriz do README: "R centrado").
+- **Stack da org (decisão 06/10/2026): coleta e pré-processamento via pacotes `DistintiveLab/tsebr` (CKAN+CDN do TSE, séries longas `local/periodo/valor` ao código IBGE) e `DistintiveLab/censoagg` (Censo 2022 → município/setor), orquestrados pelo `DistintiveLab/beep`** (`run_app()` para carga/AED, `run_panel()` para o painel, DW PostgreSQL — neste projeto, database `painel_eleicoes`; envvars `user/password/host/dbname` nunca versionadas). Passo a passo enxuto: `docs/beep-passo-a-passo.md`.
+- **Banco de dados `eleicoes`** (nome original do README) concretizado como database `painel_eleicoes` no PostgreSQL do beep; indicadores novos entram no catálogo pela convenção de `orig_name` + `atualizar_indicadores()` / `atualizar_grupos_indicadores()`.
+- **Painel**: `beep::run_panel()` e/ou o app local em `painel/` (esqueleto do beep já adaptado neste repo: mapa coroplético municipal, séries por nível territorial, download xlsx).
 - **Alertas sonoros ("beep")**: interpretado como alertas no painel quando gatilhos disparam (ex.: abstenção > 25%). Ver gotcha sobre `{beepr}` na seção 7.
 - **Camada geoespacial**: shapefiles/gpkg do IBGE lidos com `{sf}`; `{geobr}` como conveniência (verificar cobertura do Censo 2022, senão baixar direto do geoftp).
 
@@ -133,13 +132,20 @@ Projeto-irmão: mapa público para voluntários "onde dá pra conversar e virar 
 - **(g) Fichas de conversa com citações conferidas contra os PDFs dos programas** (`conferir_citacoes.py`) — padrão de qualidade para material de campo.
 - **Ressalvas**: repositório **sem LICENSE** (usar internamente / consultar os autores); caminhos hardcoded no pipeline; o front é outra stack (não R) — nosso núcleo analítico em R pode exportar os JSONs que aquele formato de front consome.
 
+### 3.7 Pacotes DistintiveLab (coleta e pré-processamento)
+
+- **`tsebr`** — cliente CKAN/CDN do TSE (descoberta via `tse_search`, download com verificação SHA-512); funções prontas: `tse_resultados_municipio`, `tse_detalhe_municipio` (aptos, comparecimento, abstenções, nulos, brancos), `tse_resultados_secao`, `tse_perfis_secao`, `tse_locais_votacao` (lat/lon por seção), `tse_candidaturas`, `tse_municipios` (correspondência TSE↔IBGE).
+- **`censoagg`** — ponte censobr → séries longas: `agregar_setores` (universo), `agregar_microdados` (ponderado), `censo_variaveis` (dicionário).
+- **`beep`** — Shiny de carga/AED (`run_app`), painel (`run_panel`), DW PostgreSQL e catálogo de indicadores.
+- Gap coberto só neste repo: nível **RA/subdistrito do DF** e os cruzamentos do piloto (arcos partidários, D0–D5) — `R/prep_perfil_ra_df.R` + pipeline em construção.
+
 ---
 
 ## 4. Fases
 
 ### Fase 0 — Fundação (semana 1)
 - `git init`, estrutura `{targets}` (`_targets.R`, `R/`, `data-raw/`, `data/`), `{renv}`.
-- Decisões: UFs prioritárias (BR completo ou recorte?), motor do banco (DuckDB → PostGIS), ferramenta do painel.
+- Decisões: UFs prioritárias (BR completo ou recorte?), ~~motor do banco~~ **resolvido: beep/PostgreSQL `painel_eleicoes`**, ~~ferramenta do painel~~ **resolvido: beep/painel local**.
 - Funções utilitárias: download+unzip em memória, leitura de CSV TSE (encoding Latin-1, separador `;`), normalização de nomes de municípios.
 - **Pronto quando**: `targets::tar_make()` roda end-to-end com um dataset-exemplo.
 
