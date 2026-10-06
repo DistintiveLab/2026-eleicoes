@@ -1,0 +1,87 @@
+{
+  "gerador": "beep::deploy_panel",
+  "versao_beep": "0.8.1.9000",
+  "data": "2026-10-06",
+  "titulo": "Painel de Indicadores",
+  "paleta": "pb",
+  "arquivos": {
+    "app.R": {
+      "sha256": "5346693744eeb0d5e7a19f2da97b32232be2c760279266de9c505aef5d9efb74"
+    },
+    "README.md": {
+      "sha256": "d064108f927a8d0c4ea9ee9db8f23d957b9ba2506ae43878b1201fd8cb094707"
+    },
+    "R/app_ui.R": {
+      "sha256": "41739451d39f88c171afb38741442695e93c651525d37f1a73a3a21006bf50f6"
+    },
+    "R/branding.R": {
+      "sha256": "7381784d5c6f0bc1962e6bd9fe1addeba17bf70f056d850560716d0b309bd241"
+    },
+    "R/painel_basemap.R": {
+      "sha256": "22d47a2316abfc30bec0e106dd73909fcf70850dce5617d999aed58f292df8ec"
+    },
+    "R/painel_ui.R": {
+      "sha256": "3671d26dd7a3cc8f43bf933c63fd5641697e06ad1262e585f978dc40a63c1f75"
+    },
+    "R/painel_cache.R": {
+      "sha256": "6f444bb017cf0151b02794e763934a07c5cbfe8e299d93bdcc0131972c6476d5"
+    },
+    "R/painel_dw.R": {
+      "sha256": "f1c050dbec923c0dd75db5a790cdbe450308f2c71ca601969a5cb0564ca719c2"
+    },
+    "R/painel_xlsx.R": {
+      "sha256": "490652dade6284f235f85d53b00789d4ee7539d59825a3f118e3691c63a89c33"
+    },
+    "R/mod_panel_globe.R": {
+      "sha256": "cffe127d421a921c51f18fe7311b4eb540c983f80d4028d61aff1282e4450258"
+    },
+    "R/mod_panel_map.R": {
+      "sha256": "6ee13331ab8e4fcebd1eb5c010ddd5a848fd1067f47aa84eb456e58dfbe98f12"
+    },
+    "R/mod_panel_regiao.R": {
+      "sha256": "437db372d760b328b697faacbd352fb81f9ab87036965e2c5fa9fe06d6ced47d"
+    },
+    "R/mod_panel_baixar.R": {
+      "sha256": "221b0be110cb7a762115a72b4b124f2c05cfe1977c4fb46e630e77fca4d73173"
+    },
+    "R/mod_panel_sobre.R": {
+      "sha256": "36d3e6606f6699cbab6cdf88fac19d89bf43e55176efcf3b8ee5f2194474f3c0"
+    },
+    "R/app_server.R": {
+      "sha256": "56b3393d4438947aeb84206db4cb0e0a4c7abad2b9f3bc54eb35e0289748a2b1"
+    },
+    "www/painel-geo.js": {
+      "sha256": "fcadbbe4adcd66ecead1c4e203157c050b4252e9edf3f9eef921b842fefa23fa"
+    },
+    "www/painel-geo.LICENSE.md": {
+      "sha256": "fb636c68736b40b30a866f0c9a3ff751360dec1a1e146aa5987863f8b8ad88b9"
+    },
+    "www/painel-globe.js": {
+      "sha256": "aca4c4b312194617691722d427126779003d54d7d823948d42dc155b1e389b50"
+    },
+    "www/painel-map-controls.js": {
+      "sha256": "755b4dff2dd4fa2a0f3041a5e9fd2763c904b54debe3239c07dfb22ac868db44"
+    },
+    "www/painel-map.js": {
+      "sha256": "d5b8de5ef8f1dc46cfc9d9f93a4ee7afaa2610cad14c5c097e5aa8a90b79d326"
+    },
+    "www/painel-mundo.geojson": {
+      "sha256": "660afec142cd4f957fff10146541f20b1fb5f17bd78042df7128368eb6ab59d7"
+    },
+    "www/painel.css": {
+      "sha256": "61a5ca0420a8a41e93652ba741619c11cc968b4cc20907142af1961fd6689534"
+    },
+    "www/painel.js": {
+      "sha256": "66c443d705ab686f4a9b2f971f11f23fa4ca33958f3e3fb2044d8117836cf94c"
+    },
+    "www/beep-tema.css": {
+      "sha256": "0cae77d1c0d7f63ef586cbd53af2623bb4e069ed33d7c79694d94338c43689ff"
+    },
+    "www/beep-tema.js": {
+      "sha256": "5e8b47c71b2bb7723af6a180399eea95dc43d51411499aacf8d4e1c5d014f68d"
+    },
+    "www/beep-Wide.png": {
+      "sha256": "61302e464c1210864f46962dba6755f343bec4338616274940f636f029aedf5f"
+    }
+  }
+}

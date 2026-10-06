@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.RData
+*.Rproj
+data-raw/raw/
+*.duckdb
+*.sqlite
+.DS_Store
+.Renviron
