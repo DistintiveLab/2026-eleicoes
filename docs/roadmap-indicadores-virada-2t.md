@@ -34,7 +34,7 @@ Combinar com o que já temos no projeto: `perfil_eleitor_secao_2026_DF` (sexo/id
 
 ---
 
-## 3. Referências externas — o que adotar de cada uma (inspeção 12/10/2026)
+## 3. Referências externas — o que adotar de cada uma (inspeção 12/10/2026, revisão 13/10)
 
 | Iniciativa | O que vale adotar |
 |---|---|
@@ -44,7 +44,12 @@ Combinar com o que já temos no projeto: `perfil_eleitor_secao_2026_DF` (sexo/id
 | **rafadaguia/analise-de-esforco-por-bairros-lula-2026** | Índice composto de **postos percentuais** (potencial 0–1, segurança, certeza, escala=log(aptos)) com 3 esquemas de pesos (P2 potencial 0,55) e **7 níveis por qcut**; "**terreno perdido**" = queda de Lula acima da queda nacional (desloc − nacional)×válidos; ganho de mobilização = +2 pp de comparecimento × fração nossa dos não-votantes; **temas com portões territoriais** (ex.: saneamento só onde ≥50% sem esgoto); ressalva ética: lê cor/raça mas não usa para priorização. |
 | **mapadavirada26.com** | Número-âncora ("diferença a virar: 2.224.965 votos"); camadas = não votaram / votaram em outro / perda desde 2022; perfil "quem tem por perto" ao clicar; materiais persuasivos por 3 perfis de eleitor (não votou/terceiro, pensando no adversário, rejeita o PT). |
 | **ondedapraconversar** (já em ROADMAP §3.6) | métrica `ate` (teto de virada = brancos+nulos+abstenções+terceiros), flag `viraveis`, unidade "região" = urnas no mesmo ponto (coordenada 4 casas ≈ 11 m). |
-| **tropaviravoto.com, voto-vizinho.momoi-labs.dev, mapa-vira-voto.eleitoral.org.br, ovotodecisivo.com, seuimposto.com, vamoscomlula.eita.coop.br** | **Pendência:** inspeção automatizada falhou (timeout). Rever manualmente até 15/10 e completar esta tabela. |
+| **tropaviravoto.com** | Enquadramento de mobilização com prazo ("entre na tropa e vire votos até 25/10"): contar o tempo até o 2ºT no painel e ligar cada ação à data da eleição; pouca analítica pública. |
+| **voto-vizinho.momoi-labs.dev** | "Quantos votos faltam no seu bairro?": mapa client-side (MapLibre) por local de votação com **busca por CEP ou GPS** como entrada sem atrito; enquadramento "converse com seus vizinhos". Adotar: campo CEP/geolocalização no painel + número "faltam X votos" por local como headline. |
+| **mapa-vira-voto.eleitoral.org.br** | Mapa por **zona eleitoral** (2.641 zonas, 6.292 pontos, espalhados ao redor do centro do município); ranking "Top 10 dupla prioridade" = candidato/1.000 hab x abstenção/1.000 hab **contra as médias nacionais**; classes de legenda com referência Brasil. Adotar: normalização per-habitante vs média nacional e ranking de dupla prioridade (2º candidato x abstenção). |
+| **ovotodecisivo.com** | "Manchas vermelhas" onde o voto decisivo está; **GPS com zoom automático na área do usuário**; "Argumentador Local": usuário informa região + maior problema e recebe roteiro de conversa. Adotar: o argumentador casa direto com os portões territoriais da PDAD (tema por RA na ficha). |
+| **seuimposto.com** | SPA "Apuração 2026" (resultados em tempo real, sem conteúdo estático verificável). Nada adotável antes do 2ºT; útil pós-25/10 como referência de monitoramento da apuração (T8). |
+| **vamoscomlula.eita.coop.br** (Eita!) | SPA "Estratégia para eleger Lula no segundo turno", sem renderização verificável; pelo padrão 2022 do ecossistema ("Onde Dá pra Conversar": votos viráveis num raio de 1 km, cascata UF-município-bairro-local): **grupos de WhatsApp por área + kit de materiais** (cartazes, santinhos, roteiros). Adotar: link de grupo/kit na ficha do local. |
 | **claude.ai/artifact/Fm6yV6cYYBEmk4AsSWpbh** | Não verificável (exige login). Se o autor exportar (HTML/prints), anexar aqui. |
 
 ---
