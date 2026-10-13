@@ -4,8 +4,8 @@
 #'   por local ou coroplético por região administrativa), ranking de
 #'   prioridade pelo IPV e ficha por local com roteiro e mensagem pronta
 #'   para WhatsApp. Lê CSVs autocontidos de data_virada/ (gerados por
-#'   R/prep_virada_2t.R no repositório), sem depender do banco de dados
-#'   do painel.
+#'   R/prep_virada_2t.R e R/prep_pdad_ra.R no repositório), sem depender do
+#'   banco de dados do painel.
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
@@ -116,7 +116,14 @@ mod_panel_virada_ui <- function(id) {
             "~9 mil (abstenção por local ligeiramente subestimada);",
             " pareamento 2022 cobre 93,6% dos votos; leituras ecológicas",
             " (perfil do local, não do eleitor); locais com menos de 200",
-            " aptos ficam fora do ranking."))))
+            " aptos ficam fora do ranking."),
+          tags$p(tags$strong("PDAD-A 2024 (IPEDF): "),
+            "o perfil sociodemográfico da RA na ficha vem da PDAD-A 2024",
+            " (pesquisa amostral com pesos domiciliar e de moradores, via",
+            " pacote pdadr). O tema de conversa é sugerido por gatilhos",
+            " territoriais, ex.: custo do ônibus onde a % de usuários é",
+            " alta e a renda per capita é baixa. Descreve a RA do local,",
+            " não o eleitor do local."))))
   )
 }
 
@@ -145,6 +152,11 @@ virada_pct <- function(x, digito = 1) {
 virada_pp <- function(x, digito = 1) {
   ifelse(is.na(x), "sem dado",
     sprintf(paste0("%+.", digito, "f pp"), 100 * x))
+}
+
+virada_real <- function(x) {
+  ifelse(is.na(x), "s/d",
+    paste0("R$ ", formatC(round(x), big.mark = ".", format = "d")))
 }
 
 virada_chip <- function(rotulo, valor, nota = NULL) {
@@ -176,6 +188,9 @@ mod_panel_virada_server <- function(id) {
           show_col_types = FALSE, progress = FALSE))
       if (file.exists(arq("virada_ra.geojson")))
         lista$geo <- sf::st_read(arq("virada_ra.geojson"), quiet = TRUE)
+      if (file.exists(arq("pdad_ra.csv")))
+        lista$pdad <- readr::read_csv(arq("pdad_ra.csv"),
+          show_col_types = FALSE, progress = FALSE)
       lista
     })
     tem_dados <- shiny::reactive(!is.null(dados))
@@ -460,6 +475,15 @@ mod_panel_virada_server <- function(id) {
           " com roteiro de campo e mensagem pronta para WhatsApp."))
       }
       l <- l[1, ]
+      pdad <- if (!is.null(dados$pdad)) {
+        p <- dados$pdad[dados$pdad$ra == l$ra & dados$pdad$ra != "DF", ,
+          drop = FALSE]
+        if (nrow(p)) p[1, ] else NULL
+      }
+      pdad_df <- if (!is.null(dados$pdad)) {
+        p <- dados$pdad[dados$pdad$ra == "DF", , drop = FALSE]
+        if (nrow(p)) p[1, ] else NULL
+      }
       vpc_gov <- l[["gov_votos_para_vencer_p50"]]
       vpc_pres <- l[["pres_votos_para_vencer_p50"]]
       classe_gov <- unname(virada_classe_rotulo[l[["gov_classe"]]])
@@ -496,6 +520,30 @@ mod_panel_virada_server <- function(id) {
           "(%s) com a mobilização de faltosos."),
           virada_int(abst_gov), virada_int(vpc_gov),
           virada_int(terceiros_gov))
+      }
+
+      if (!is.null(pdad) && !is.na(pdad$tema_sugerido) &&
+        !grepl("^sem gatilho", pdad$tema_sugerido)) {
+        detalhe <- switch(pdad$tema_sugerido,
+          "custo do ônibus" = sprintf(
+            "%s dos ocupados vão de ônibus ao trabalho e a renda per capita média da RA é %s",
+            virada_pct(pdad$pct_onibus), virada_real(pdad$renda_pc)),
+          "transferência de renda" = sprintf(
+            "%s dos domicílios da RA recebem transferência de renda",
+            virada_pct(pdad$pct_trans_renda)),
+          "moradia e regularização" = sprintf(
+            "%s dos domicílios sem escritura definitiva",
+            virada_pct(pdad$pct_sem_escritura)),
+          "internet e conectividade" = sprintf(
+            "%s dos domicílios sem internet em casa",
+            virada_pct(pdad$pct_sem_internet)),
+          "trabalho e carteira" = sprintf(
+            "%s dos empregados sem carteira assinada",
+            virada_pct(pdad$pct_sem_carteira)),
+          "")
+        roteiro <- paste0(roteiro, sprintf(
+          " Ângulo PDAD da %s: %s - %s.",
+          l$ra_nome, pdad$tema_sugerido, detalhe))
       }
 
       mensagem <- sprintf(paste0(
@@ -557,6 +605,38 @@ mod_panel_virada_server <- function(id) {
             "votaram Lula, não Grass"),
           virada_chip("Eleitoras", virada_int(l[["eleitoras"]]),
             sprintf("%s de 16 a 29 anos", virada_int(l[["eleitoras_16_29"]])))),
+        if (!is.null(pdad))
+          tags$div(class = "painel-virada-pdad",
+            tags$h4("Perfil PDAD-A 2024 da RA"),
+            tags$div(class = "painel-resumo-grade",
+              virada_chip("Tema de conversa sugerido", pdad$tema_sugerido,
+                if (is.null(pdad_df)) NULL else sprintf(
+                  "renda per capita do DF: %s",
+                  virada_real(pdad_df$renda_pc))),
+              virada_chip("Renda domiciliar per capita",
+                virada_real(pdad$renda_pc),
+                if (is.null(pdad_df)) NULL else sprintf("DF: %s",
+                  virada_real(pdad_df$renda_pc))),
+              virada_chip("Domicílios com transferência de renda",
+                virada_pct(pdad$pct_trans_renda),
+                if (is.null(pdad_df)) NULL else sprintf("DF: %s",
+                  virada_pct(pdad_df$pct_trans_renda))),
+              virada_chip("Ocupados que vão de ônibus ao trabalho",
+                virada_pct(pdad$pct_onibus),
+                if (is.null(pdad_df)) NULL else sprintf("DF: %s",
+                  virada_pct(pdad_df$pct_onibus))),
+              virada_chip("Domicílios sem internet em casa",
+                virada_pct(pdad$pct_sem_internet),
+                if (is.null(pdad_df)) NULL else sprintf("DF: %s",
+                  virada_pct(pdad_df$pct_sem_internet))),
+              virada_chip("Domicílios sem escritura definitiva",
+                virada_pct(pdad$pct_sem_escritura),
+                if (is.null(pdad_df)) NULL else sprintf("DF: %s",
+                  virada_pct(pdad_df$pct_sem_escritura))),
+              virada_chip("Empregados sem carteira assinada",
+                virada_pct(pdad$pct_sem_carteira),
+                if (is.null(pdad_df)) NULL else sprintf("DF: %s",
+                  virada_pct(pdad_df$pct_sem_carteira))))),
         tags$h4("Roteiro curto"),
         tags$p(class = "painel-nota", roteiro),
         tags$div(class = "painel-resumo-acoes",

@@ -429,6 +429,7 @@ h3 { font-size: 19px; }
 .painel-virada-grade .painel-card { margin-bottom: 18px; overflow: hidden; }
 .painel-virada-ficha .painel-resumo-grade { margin-top: 10px; }
 .painel-virada-ficha h4 { margin: 14px 0 4px; font-size: 14px; }
+.painel-virada-pdad { margin-top: 4px; padding-top: 6px; border-top: 1px dashed #d8dee6; }
 .painel-virada-metodo details { margin-top: 8px; }
 .painel-virada-metodo summary {
   cursor: pointer; color: var(--p-destaque); font-weight: 600;
