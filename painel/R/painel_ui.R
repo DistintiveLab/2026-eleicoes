@@ -129,6 +129,8 @@ painel_topbar <- function(titulo,
 #' @keywords internal
 painel_abas <- function() {
   list(
+    shiny::tabPanel("Virada 2ºT", value = "virada",
+                    mod_panel_virada_ui("panel_virada_1")),
     shiny::tabPanel("Região", value = "regiao",
                     mod_panel_regiao_ui("panel_regiao_1")),
     shiny::tabPanel("Mapa", value = "mapa",

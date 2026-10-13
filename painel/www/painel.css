@@ -421,3 +421,23 @@ h3 { font-size: 19px; }
 .painel-mapa .leaflet-container {
   background-color: #e9ecef;
 }
+
+/* Aba Virada 2ºT: grade mapa+ranking, chips, ficha e bloco #metodo */
+.painel-virada-grade {
+  grid-template-columns: minmax(0, 2.2fr) minmax(300px, 1fr);
+}
+.painel-virada-grade .painel-card { margin-bottom: 18px; overflow: hidden; }
+.painel-virada-ficha .painel-resumo-grade { margin-top: 10px; }
+.painel-virada-ficha h4 { margin: 14px 0 4px; font-size: 14px; }
+.painel-virada-metodo details { margin-top: 8px; }
+.painel-virada-metodo summary {
+  cursor: pointer; color: var(--p-destaque); font-weight: 600;
+}
+.painel-virada-metodo p { margin: 10px 0; }
+.painel-virada-toolbar .selectize-control { min-width: 0; }
+.painel-virada-toolbar .form-group .shiny-input-container {
+  width: auto;
+}
+@media (max-width: 900px) {
+  .painel-virada-grade { grid-template-columns: 1fr; }
+}

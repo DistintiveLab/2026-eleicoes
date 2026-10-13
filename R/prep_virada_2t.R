@@ -566,6 +566,25 @@ t5 <- function() {
     "virada_prioridade.csv"))
     file.copy(file.path("data", f), file.path("painel/data_virada", f),
       overwrite = TRUE)
+  gpkg <- "data-raw/raw/ibge/DF_subdistritos_CD2022.gpkg"
+  if (file.exists(gpkg)) {
+    ponte <- read_csv("data/perfil_ra_df.csv", progress = FALSE,
+      show_col_types = FALSE, locale = locale(encoding = "Latin1")) %>%
+      transmute(ra = ra_ibge, cd_subdist = as.character(cd_subdist)) %>%
+      distinct()
+    geo <- sf::st_read(gpkg, quiet = TRUE) %>%
+      transmute(cd_subdist = as.character(CD_SUBDIST)) %>%
+      distinct(cd_subdist, .keep_all = TRUE) %>%
+      inner_join(ponte, by = "cd_subdist") %>%
+      filter(ra %in% unique(d$ra)) %>%
+      sf::st_transform(31983) %>%
+      sf::st_simplify(dTolerance = 30, preserveTopology = TRUE) %>%
+      sf::st_transform(4326)
+    sf::st_write(geo,
+      file.path("painel/data_virada", "virada_ra.geojson"),
+      delete_dsn = TRUE, quiet = TRUE)
+    cat(sprintf("geojson RA: %d feições\n", nrow(geo)))
+  }
   cat(sprintf("IPV: elegíveis=%d/%d | meta DF vpc pres=%d gov=%d\n",
     sum(elegivel), nrow(d), round(meta_pres), round(meta_gov)))
   cat(sprintf("csv: %d colunas em virada_local | %d RAs | %d linhas prioridade\n",
