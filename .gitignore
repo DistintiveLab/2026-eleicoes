@@ -7,3 +7,8 @@ data-raw/raw/
 *.sqlite
 .DS_Store
 .Renviron
+cache/
+painel/cache/
+coleta/cache/
+painel/coleta
+*.log
