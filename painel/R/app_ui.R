@@ -3,9 +3,9 @@
 # com shiny::tabPanel() + um novo R/mod_*.R no padrao dos existentes.
 
 app_ui <- function() {
-  titulo <- painel_brand_titulo("Painel de Indicadores")
+  titulo <- painel_brand_titulo("Painel Eleições")
   subtitulo <- painel_brand_subtitulo("beep — banco de dados do painel")
-  paleta <- painel_brand_paleta("pb")
+  paleta <- painel_brand_paleta("brasil")
   shiny::tagList(
     painel_recursos("www", paleta),
     painel_topbar(titulo, subtitulo),

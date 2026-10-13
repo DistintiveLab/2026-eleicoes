@@ -51,7 +51,10 @@ painel_cache_get <- function(chave, ttl_horas, gerar) {
 }
 
 #' Descarta o cache de memoria e de disco (rodar apos atualizar o DW com ETL)
-#' @keywords internal
+#'
+#' Deve rodar NA RAIZ do projeto do painel (ou de uma sessao com o mesmo
+#' diretorio de trabalho): o cache em disco e o diretorio relativo `cache/`.
+#' @export
 painel_cache_limpar <- function() {
   rm(list = ls(.painel_cache_env, all.names = TRUE), envir = .painel_cache_env)
   unlink(file.path(painel_cache_dir(), "*.rds"))

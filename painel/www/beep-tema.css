@@ -28,6 +28,23 @@ body.beep-pb {
   --p-linha: #E4E1EA;
 }
 
+/* Paleta Brasil: fundo branco dominante, vermelho protagonista
+   (tinta/destaque), amarelo-bandeira no realce. Verde/azul ficam
+   disponiveis para graficos via --p-extra-verde/--p-extra-azul. */
+body.beep-brasil {
+  --p-tinta: #C8102E;          /* vermelho bandeira/protagonista */
+  --p-destaque: #C8102E;
+  --p-destaque-hover: #970F20;
+  --p-realce: #FFDF00;         /* amarelo-bandeira */
+  --p-texto: #242424;
+  --p-mudo: #6B6B6B;
+  --p-papel: #FFFFFF;
+  --p-superficie: #FFF8F5;     /* branco levemente aquecido */
+  --p-linha: #F0D9D9;
+  --p-extra-verde: #009C3B;    /* verde-bandeira p/ graficos */
+  --p-extra-azul: #002776;     /* azul-bandeira p/ graficos */
+}
+
 /* Botão de alternância de paleta (beep_tema_botao()): o JS troca o
    rotulo/aria conforme a paleta ativa ("Preto e branco" / "Cores Gov.br") */
 .beep-tema-btn {

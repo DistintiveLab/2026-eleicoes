@@ -43,7 +43,7 @@ painel_brand_subtitulo <- function(default = "beep — banco de dados do painel"
 #' Paleta inicial do painel (usa painel_paleta)
 #' @keywords internal
 painel_brand_paleta <- function(default = "govbr") {
-  match.arg(Sys.getenv("painel_paleta", default), c("govbr", "pb"))
+  match.arg(Sys.getenv("painel_paleta", default), c("govbr", "pb", "brasil"))
 }
 
 #' Linha de contato do rodape (usa painel_contato); NULL mantem o credito

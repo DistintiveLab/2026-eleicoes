@@ -1,5 +1,5 @@
 # Painel de indicadores do banco de dados do painel — esqueleto gerado por beep::deploy_panel()
-# beep 0.8.1.9000 · 2026-10-06. Este codigo pertence ao projeto: edite
+# beep 0.9.3.9030 · 2026-10-12. Este codigo pertence ao projeto: edite
 # livremente (abas em R/mod_*.R e R/painel_ui.R, composicao em
 # R/app_ui.R, marca em R/branding.R, dados em R/painel_dw.R).
 # Credenciais do banco de dados (variaveis de ambiente): user, password, host, dbname.

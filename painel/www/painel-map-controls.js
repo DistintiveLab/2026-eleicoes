@@ -1,7 +1,9 @@
-/* Slider de anos do mapa (port do labourvaluesdatapanel, sem i18n nem lista
- * agrupada de indicadores). O servidor apenas informa os limites via
- * mensagem "painel-map-years": o navegador conserva a selecao mais recente
- * e a ajusta a cobertura recebida com snap direcional sobre lacunas. */
+/* Slider de datas do mapa (port do labourvaluesdatapanel, sem i18n nem lista
+ * agrupada de indicadores). O servidor informa as posicoes (1..N, uma por
+ * refdate distinto) e os rotulos via mensagem "painel-map-years": o navegador
+ * conserva a selecao mais recente e a ajusta a cobertura recebida com snap
+ * direcional sobre lacunas; o rotulo de cada posicao vem do servidor (ano
+ * quando e o unico ponto do ano, d/m/AAAA quando o ano tem turnos). */
 (function () {
   'use strict';
   function snapYear(years, value, previous) {
@@ -50,13 +52,23 @@
       const values = Array.isArray(message.years) ? message.years : [message.years];
       const years = values.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
       if (!years.length) return;
+      const labels = Array.isArray(message.labels) ? message.labels.map(String) : [];
+      const label = function (value) {
+        const i = years.indexOf(value);
+        return i >= 0 && labels[i] !== undefined ? labels[i] : String(value);
+      };
       const sliderNode = document.getElementById(message.sliderId);
       const slider = window.jQuery(sliderNode).data('ionRangeSlider');
       if (!slider) { entry.years = years; return; }
       const previous = slider.result.from;
       const year = snapYear(years, previous);
       entry.years = years;
-      slider.update({min: years[0], max: years[years.length - 1], from: year});
+      const opts = {min: years[0], max: years[years.length - 1], from: year, step: 1};
+      if (labels.length) {
+        opts.prettify = label;
+        opts.prettify_enabled = true;
+      }
+      slider.update(opts);
       entry.lastYear = year;
       if (year !== previous) window.jQuery(sliderNode).trigger('change');
     });

@@ -8,18 +8,29 @@
 (function () {
   'use strict';
   var atual = 'govbr';
+  var paletas = ['govbr', 'pb', 'brasil'];
+  var rotulos = {
+    govbr: 'Preto e branco',
+    pb: 'Brasil (vermelho)',
+    brasil: 'Cores Gov.br'
+  };
+  var titulos = {
+    govbr: 'Mudar para preto e branco com roxo Distintive',
+    pb: 'Mudar para a paleta Brasil (vermelho, fundo branco)',
+    brasil: 'Mudar para a paleta Gov.br (azul)'
+  };
 
   function aplicar(paleta) {
-    atual = paleta === 'pb' ? 'pb' : 'govbr';
+    atual = paletas.indexOf(paleta) >= 0 ? paleta : 'govbr';
     document.body.classList.toggle('beep-pb', atual === 'pb');
+    document.body.classList.toggle('beep-brasil', atual === 'brasil');
     try { localStorage.setItem('beep_paleta', atual); } catch (e) { /* ok */ }
+    var proximo = rotulos[paletas[(paletas.indexOf(atual) + 1) % paletas.length]];
     var botoes = document.querySelectorAll('.beep-tema-btn');
     for (var i = 0; i < botoes.length; i++) {
-      botoes[i].textContent = atual === 'pb' ? 'Cores Gov.br' : 'Preto e branco';
-      botoes[i].setAttribute('aria-pressed', atual === 'pb' ? 'false' : 'true');
-      botoes[i].title = atual === 'pb'
-        ? 'Mudar para a paleta Gov.br (azul)'
-        : 'Mudar para preto e branco com roxo Distintive';
+      botoes[i].textContent = proximo;
+      botoes[i].setAttribute('aria-pressed', atual === 'govbr' ? 'false' : 'true');
+      botoes[i].title = titulos[atual];
     }
     document.dispatchEvent(
       new CustomEvent('beep:paleta', { detail: { paleta: atual } }));
@@ -28,10 +39,10 @@
   function inicial() {
     var salva = null;
     try { salva = localStorage.getItem('beep_paleta'); } catch (e) { /* ok */ }
-    if (salva === 'govbr' || salva === 'pb') return salva;
+    if (paletas.indexOf(salva) >= 0) return salva;
     var raiz = document.getElementById('beep_tema_raiz');
     var param = raiz ? raiz.getAttribute('data-paleta') : null;
-    return param === 'pb' ? 'pb' : 'govbr';
+    return paletas.indexOf(param) >= 0 ? param : 'govbr';
   }
 
   document.addEventListener('click', function (evento) {

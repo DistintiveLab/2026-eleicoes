@@ -6,7 +6,9 @@
 #'   aproximam estilo Google Earth e clicar numa area com dados escolhe a
 #'   localidade na aba Regiao. No nivel municipal (sem geometria coletiva
 #'   leve) a base sao as UFs com o municipio escolhido destacado, a UF
-#'   inteira em foco e a malha de bordas dos demais municipios do estado.
+#'   inteira em foco e a malha de bordas dos demais municipios do estado;
+#'   nos niveis submunicipais pesados a malha troca pelas proprias
+#'   feicoes do nivel dentro do municipio em foco.
 #'   Port do globo do labourvaluesdatapanel.
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
@@ -56,7 +58,7 @@ mod_panel_globe_server <- function(id,
 
     disponiveis <- shiny::reactive({
       ind <- suppressWarnings(as.integer(indicador()))[1]
-      shiny::req(!is.na(ind))
+      if (is.na(ind)) return(character(0))
       if (identical(modo_geo()$modo, "uf"))
         painel_ufs_com_dados_cache(ind, nivel())
       else
@@ -68,11 +70,11 @@ mod_panel_globe_server <- function(id,
     # A geometria do nivel viaja na primeira mensagem, apos cada
     # remontagem do host (handshake via input$pronto) e quando o nivel
     # muda; nas demais, apenas disponibilidade e selecao. Destaque (a
-    # localidade fora das feicoes) e contexto (a UF que a contem, com a
-    # malha municipal de bordas) so viajam quando o par muda — o cliente
-    # guarda o que ja recebeu.
+    # localidade fora das feicoes), contexto (a UF que a contem) e malha
+    # (bordas em torno do foco) so viajam quando o respectivo par muda —
+    # o cliente guarda o que ja recebeu.
     instancia <- -1L
-    enviado <- list(geo = NULL, destaque = NULL, contexto = NULL)
+    enviado <- list(geo = NULL, destaque = NULL, contexto = NULL, malha = NULL)
     shiny::observe({
       atual <- localidade()
       md <- modo_geo()
@@ -83,12 +85,15 @@ mod_panel_globe_server <- function(id,
         modo = md$modo,
         nivel = as.character(nivel()),
         locais = locais(),
-        disponiveis = disponiveis(),
+        # I() preserva o vetor como array JSON: o toJSON do Shiny usa
+        # auto_unbox e um vetor de tamanho 1 viraria string solta, que o
+        # cliente descartaria (disponibilidade vazia com uma unica UF)
+        disponiveis = I(disponiveis()),
         selected = if (identical(md$modo, "nivel") && length(atual) &&
                        !is.na(atual)) as.character(atual) else "",
         destaque = "",
         contexto = "")
-      pronto <- if (is.null(input$pronto)) -1L else as.integer(input$pronto)
+      pronto <- if (is.null(input$pronto)) -1L else input$pronto
       geo_chave <- paste(md$modo, nivel())
       remontou <- !identical(pronto, instancia)
       if (remontou || !identical(enviado$geo, geo_chave)) {
@@ -110,14 +115,27 @@ mod_panel_globe_server <- function(id,
           msg$contexto <- pai$code[1]
           if (remontou || !identical(enviado$contexto, msg$contexto)) {
             msg$contextoGeojson <- painel_geojson(pai)
-            malha <- painel_geo_mun_uf_cache(atual)
-            if (nrow(malha)) msg$malhaGeojson <- painel_geojson(malha)
             enviado$contexto <<- msg$contexto
           }
-        } else enviado$contexto <<- NULL
+          # Malha em torno do foco: bordas dos municipios do estado na
+          # selecao municipal; setores/bairros/areas de ponderacao do
+          # municipio em foco na submunicipal. Reenviada a cada troca de
+          # foco porque a feicao excluida e a do proprio destaque
+          if (remontou || !identical(enviado$malha, msg$destaque)) {
+            malha <- painel_geo_malha_foco_cache(atual)
+            enviado$malha <<- if (nrow(malha)) {
+              msg$malhaGeojson <- painel_geojson(malha)
+              msg$destaque
+            } else ""
+          }
+        } else {
+          enviado$contexto <<- NULL
+          enviado$malha <<- NULL
+        }
       } else {
         enviado$destaque <<- NULL
         enviado$contexto <<- NULL
+        enviado$malha <<- NULL
       }
       session$sendCustomMessage("painel-globe", msg)
     })

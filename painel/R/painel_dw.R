@@ -49,14 +49,18 @@ painel_mdata_extras <- function(con, md) {
   md$data_class_id <- rep(NA_integer_, NROW(md))
   md$tipo_grafico <- rep(NA_character_, NROW(md))
   md$visivel <- rep(TRUE, NROW(md))
+  md$unidade <- rep(NA_character_, NROW(md))
   freq <- tryCatch(DBI::dbGetQuery(con, paste(
-    "SELECT e.mdata_id, f.freq_name, e.data_class_id FROM mdata_exts e",
+    "SELECT e.mdata_id, f.freq_name, e.data_class_id, e.dataunit_num",
+    "FROM mdata_exts e",
     "LEFT JOIN data_freq f ON f.data_freq_id = e.data_freq_id")),
     error = function(e) NULL)
   if (NROW(freq)) {
     md$freq_name <- freq$freq_name[match(md$mdata_id, freq$mdata_id)]
     md$data_class_id <- as.integer(
       freq$data_class_id[match(md$mdata_id, freq$mdata_id)])
+    md$unidade <- painel_unidade_normaliza(
+      freq$dataunit_num[match(md$mdata_id, freq$mdata_id)])
   }
   graf <- tryCatch(DBI::dbGetQuery(con,
     "SELECT mdata_id, tipo_grafico FROM mdata_grafico"),
@@ -94,15 +98,17 @@ painel_rotulo_tempo <- function(freq_name) {
   rotulos <- c(diaria = "Data", "diària" = "Data", semanal = "Semana",
                quinzenal = "Quinzena", mensal = "Mês", bimestral = "Bimestre",
                trimestral = "Trimestre", quadrimestral = "Quadrimestre",
-               semestral = "Semestre", anual = "Ano", bienal = "Ano")
+               semestral = "Semestre", anual = "Ano", bienal = "Ano",
+               irregular = "Data")
   if (is.na(f) || !f %in% names(rotulos)) return("Ano")
   unname(rotulos[[f]])
 }
 
-#' Geometrias municipais do DW (bloco historico local_id < 5571 mais os
+#' Geometrias municipais do DW (bloco local_id < 5572 mais os
 #' municipios incorporados apos o bloco PNAD, local_id > 7087)
 #' @keywords internal
 painel_geo_mun <- function(con) {
+  painel_pnad_bloco_fim_resolver(con)
   sf::st_read(con, query = paste(
     "SELECT l.local_id, l.local_name, g.geometry",
     "FROM local l JOIN geoloc g USING (geoloc_id)",
@@ -113,20 +119,27 @@ painel_geo_mun <- function(con) {
 #' granularidades: municipio, UF, aglomeracao, regiao, "exceto")
 #' @keywords internal
 painel_locais <- function(con) {
+  painel_pnad_bloco_fim_resolver(con)
   loc <- DBI::dbGetQuery(con,
     "SELECT local_id, local_name FROM local ORDER BY local_name, local_id")
   setNames(loc$local_id,
            paste0(loc$local_name, " (id ", loc$local_id, ")"))
 }
 
-#' Codigo IBGE dos municipios (geoloc_id de 7 digitos) indexado pelo
-#' local_id — traduz a coluna "Codigo" das planilhas da aba Baixar
+#' Codigo IBGE das localidades com codigo externo, indexado pelo local_id —
+#' traduz a coluna "Codigo" das planilhas da aba Baixar: municipios
+#' (geoloc_id de 7 digitos) e niveis submunicipais (setor, bairro, area de
+#' ponderacao; larguras acima de 10, cujos geoloc_id sao os codigos
+#' divulgados pelo IBGE). Os demais niveis (UF, regioes, PNAD) nao tem
+#' codigo externo e continuam mostrando o local_id.
 #' @keywords internal
 painel_codigo_mun <- function(con) {
+  painel_pnad_bloco_fim_resolver(con)
   cod <- DBI::dbGetQuery(con, paste(
     "SELECT l.local_id, g.geoloc_id::text AS codigo",
     "FROM local l JOIN geoloc g USING (geoloc_id)",
     "WHERE", painel_municipio_filtro(),
+    "OR length(g.geoloc_id::text) > 10",
     "ORDER BY l.local_id"))
   setNames(cod$codigo, as.character(cod$local_id))
 }
@@ -190,6 +203,60 @@ painel_valores_ano <- function(con, mdata_id, ano) {
     mdata_id, ano, ano + 1L))
 }
 
+#' Refdates distintos de um indicador (limites do slider por data do mapa)
+#' @keywords internal
+painel_refdates <- function(con, mdata_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  if (is.na(mdata_id)) {
+    return(data.frame(refdate = as.Date(character(0))))
+  }
+  DBI::dbGetQuery(con, sprintf(
+    "SELECT DISTINCT refdate FROM data_values WHERE mdata_id = %d ORDER BY 1",
+    mdata_id))
+}
+
+#' Valores das localidades num refdate exato (slider por data do mapa)
+#' @keywords internal
+painel_valores_refdate <- function(con, mdata_id, refdate) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  refdate <- as.Date(refdate)[1]
+  if (is.na(mdata_id) || is.na(refdate)) {
+    return(data.frame(local_id = integer(0), refdate = as.Date(character(0)),
+                      value = numeric(0)))
+  }
+  DBI::dbGetQuery(con, sprintf(paste(
+    "SELECT local_id, refdate, value FROM data_values",
+    "WHERE mdata_id = %d AND refdate = date '%s'",
+    "AND value <> 'NaN'::float8"),
+    mdata_id, format(refdate, "%Y-%m-%d")))
+}
+
+#' Rotulo curto de cada refdate para o slider: so o ano quando ele e o
+#' unico ponto daquele ano na serie (series anuais seguem \"2022\"), ou
+#' d/m/AAAA quando o ano tem mais de um ponto (turnos de eleicao)
+#' @keywords internal
+painel_rotulo_data <- function(datas) {
+  datas <- as.Date(datas)
+  anos <- format(datas, "%Y")
+  contagens <- table(anos)
+  as.character(ifelse(anos %in% names(contagens)[contagens > 1],
+                      format(datas, "%d/%m/%Y"), anos))
+}
+
+#' Rotulo de aba das planilhas do painel: mesmo criterio de
+#' [painel_rotulo_data()] (ano sozinho quando ele e o unico ponto do ano
+#' na serie), mas com data completa ISO AAAA-MM-DD nos anos de varios
+#' pontos: "/" e proibido em nome de aba de planilha e o ISO ordena
+#' lexicograficamente correto mesmo misturado com "2022"
+#' @keywords internal
+painel_rotulo_aba <- function(datas) {
+  datas <- as.Date(datas)
+  anos <- format(datas, "%Y")
+  contagens <- table(anos)
+  as.character(ifelse(anos %in% names(contagens)[contagens > 1],
+                      format(datas, "%Y-%m-%d"), anos))
+}
+
 #' Serie completa do indicador ja reduzida a 1 observacao por localidade x
 #' ano (ultimo refdate finito do ano): UMA query por indicador em vez de uma
 #' por (indicador, ano), que o mapa animado e a aba Baixar pagariam a cada
@@ -208,6 +275,26 @@ painel_valores_por_ano <- function(con, mdata_id) {
     "FROM data_values",
     "WHERE mdata_id = %d AND value <> 'NaN'::float8",
     "ORDER BY local_id, ano, refdate DESC"),
+    mdata_id))
+}
+
+#' Serie completa do indicador com TODAS as observacoes (uma linha por
+#' localidade x refdate, sem reducao ao ultimo ponto do ano): base do
+#' explorar e do recorte por data da aba Baixar, consistente com o slider
+#' por data do mapa (eleicoes com 2 turnos aparecem nos dois refdates)
+#' @keywords internal
+painel_valores_por_data <- function(con, mdata_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  if (is.na(mdata_id)) {
+    return(data.frame(local_id = integer(0), refdate = as.Date(character(0)),
+                      value = numeric(0), ano = integer(0)))
+  }
+  DBI::dbGetQuery(con, sprintf(paste(
+    "SELECT local_id, refdate, value,",
+    "date_part('year', refdate)::int AS ano",
+    "FROM data_values",
+    "WHERE mdata_id = %d AND value <> 'NaN'::float8",
+    "ORDER BY local_id, refdate"),
     mdata_id))
 }
 
@@ -231,27 +318,37 @@ painel_ranking_vazio <- function() {
              rank_br = NA_integer_, n_br = NA_integer_)
 }
 
-#' Posicao de uma localidade num indicador e ano: quantos municipios do
-#' pais e da propria UF tem valor MAIOR naquele ano
+#' Posicao de uma localidade num indicador e data: quantos municipios do
+#' pais e da propria UF tem valor MAIOR naquela data
 #'
 #' Os dois universos sao municipais (largura 7 do geoloc_id): o pais inteiro
 #' e a UF de origem, pelo prefixo de 2 digitos do geoloc_id. A posicao conta
 #' os valores estritamente maiores, entao empates dividem a mesma posicao; o
-#' total (`n_uf`, `n_br`) e quantos municipios tem dado no ano para o
-#' indicador. Vale a regra de ano de [painel_valores_ano()] (ultimo refdate
-#' de cada localidade dentro do ano, `DISTINCT ON` + faixa `make_date`), e o
-#' valor da propria localidade e o do mesmo ano.
+#' total (`n_uf`, `n_br`) e quantos municipios tem dado na data para o
+#' indicador. Com `refdate` valido a comparacao e no dia exato (slider por
+#' data do mapa); sem `refdate`, vale a regra de ano de [painel_valores_ano()]
+#' (ultimo refdate de cada localidade dentro do ano, `DISTINCT ON` + faixa
+#' `make_date`), e o valor da propria localidade e do mesmo ano.
 #'
 #' Contar de cima para baixo assume "maior e melhor", o sentido dos
 #' indicadores compostos do catalogo do painel: o resumo nao guarda direcao
 #' do indicador (a tabela mdata nao tem essa coluna).
 #' @keywords internal
-painel_ranking_local <- function(con, mdata_id, local_id, ano) {
+painel_ranking_local <- function(con, mdata_id, local_id, ano,
+                                 refdate = NULL) {
   mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
   local_id <- suppressWarnings(as.integer(local_id))[1]
   ano <- suppressWarnings(as.integer(ano))[1]
+  refdate <- as.Date(refdate)[1]
   if (is.na(mdata_id) || is.na(local_id) || is.na(ano)) {
     return(painel_ranking_vazio())
+  }
+  corte <- if (!is.na(refdate)) {
+    sprintf("AND v.refdate = date '%s'", format(refdate, "%Y-%m-%d"))
+  } else {
+    sprintf(paste("AND v.refdate >= make_date(%d, 1, 1)",
+                  "AND v.refdate < make_date(%d, 1, 1)"),
+            ano, ano + 1L)
   }
   q <- DBI::dbGetQuery(con, sprintf(paste(
     "WITH alvo AS (",
@@ -261,7 +358,7 @@ painel_ranking_local <- function(con, mdata_id, local_id, ano) {
     "  JOIN data_values v ON v.local_id = l.local_id",
     "  WHERE l.local_id = %d AND length(g.geoloc_id::text) = 7",
     "  AND v.mdata_id = %d",
-    "  AND v.refdate >= make_date(%d, 1, 1) AND v.refdate < make_date(%d, 1, 1)",
+    "  %s",
     "  AND v.value <> 'NaN'::float8",
     "  ORDER BY v.refdate DESC LIMIT 1",
     "), vals AS (",
@@ -270,7 +367,7 @@ painel_ranking_local <- function(con, mdata_id, local_id, ano) {
     "  JOIN local l USING (local_id)",
     "  JOIN geoloc g USING (geoloc_id)",
     "  WHERE v.mdata_id = %d",
-    "  AND v.refdate >= make_date(%d, 1, 1) AND v.refdate < make_date(%d, 1, 1)",
+    "  %s",
     "  AND v.value <> 'NaN'::float8",
     "  AND length(g.geoloc_id::text) = 7",
     "  ORDER BY v.local_id, v.refdate DESC",
@@ -282,8 +379,8 @@ painel_ranking_local <- function(con, mdata_id, local_id, ano) {
     "  AS rank_br,",
     "  (SELECT count(*) FROM vals, alvo)::int AS n_br",
     "FROM vals v, alvo a WHERE v.uf = a.uf"),
-    local_id, mdata_id, ano, ano + 1L,
-    mdata_id, ano, ano + 1L))
+    local_id, mdata_id, corte,
+    mdata_id, corte))
   if (!NROW(q)) return(painel_ranking_vazio())
   r <- vapply(q, function(x) suppressWarnings(as.numeric(x))[1], numeric(1))
   # alvo vazio (localidade nao municipal ou sem dado no ano) devolve a
@@ -322,6 +419,14 @@ painel_ranking_texto <- function(rank_uf, n_uf, rank_br, n_br) {
 # local_id (6941..7086) — publicadas so pelos indicadores pnadc*/comp_pnadc*
 # (verificado 2026-09-22: nenhum indicador municipal publica nelas, e nenhum
 # pnadc publica em municipio).
+# Niveis submunicipais (roadmap-niveis-submunicipais) usam CHAVE POR TIPO
+# (o proprio `nivel_tipo` gravado em `local`): bairro, subdistrito, setor,
+# area de ponderacao. A largura deixa de ser identificadora porque bairro
+# e subdistrito dividem os 11 digitos — quem decide e o nivel_tipo. As
+# chaves numericas de largura ("10"/"11"/"12"/"15"/"16") seguem listadas
+# como legado para linhas gravadas antes do nivel_tipo. Manter sincrono
+# com R/niveis_territoriais.R (o esqueleto do painel e autocontido de
+# proposito).
 painel_niveis_rotulo <- c(
   "1" = "Região",
   "2" = "Unidade da Federação",
@@ -330,50 +435,113 @@ painel_niveis_rotulo <- c(
   "6" = "Região geográfica imediata",
   "7" = "Município",
   "7p" = "Região de interesse PNAD",
-  "8" = "Mesorregião")
+  "8" = "Mesorregião",
+  "11" = "Bairro",
+  "12" = "Bairro",
+  "10" = "Área de ponderação",
+  "15" = "Setor censitário",
+  "16" = "Setor censitário",
+  "bairro" = "Bairro",
+  "subdistrito" = "Subdistrito (RA)",
+  "setor" = "Setor censitário",
+  "area_ponderacao" = "Área de ponderação")
+
+# Largura representativa de cada nivel submunicipal (para os consumers que
+# so olham p$nivel: rotulo com sigla de UF em 7, simplificacao de geometria
+# abaixo de 3...). Chave = nivel_tipo; copia local de
+# R/niveis_territoriais.R — o esqueleto do painel e autocontido.
+painel_nivel_tipo_largura <- c(
+  bairro = 11L, subdistrito = 11L, area_ponderacao = 10L, setor = 15L)
 
 # Fronteira entre os municipios e as regioes de interesse em PNAD Contínua
-# dentro da largura 7 do geoloc_id — mesma convencao ja adotada por
-# painel_geo_mun(). Municipios: bloco historico (local_id 1..5570, Brasilia
-# incluida) mais os criados depois da carga original, incorporados com
-# append APOS o bloco PNAD (local_id 7088, 7089, ...; ver
-# incorporar_municipio_ibge()). PNAD: bloco contiguo 5571..7087.
-painel_municipio_limite_id <- 5571L
+# dentro da largura 7 do geoloc_id — mesma convencao adotada pelo
+# populate_initialdb (malha 2024). Municipios: local_id 1..5571 (5571
+# municipios da malha 2024, Boa Esperanca do Norte incluida); estratos
+# PNAD a partir de 5572. O limite superior 7087 tem duas funcoes:
+# (a) excluir da zona PNAD os municipios incorporados com append
+# (local_id 7088+; ver incorporar_municipio_ibge()); no DW de
+# producao com a numeracao antiga, 7087 era o proprio Brasil
+# (estratos 6941..7086, Brasil = 7087) — o gate de largura 7 o
+# mantinha fora da zona PNAD de qualquer forma. No numeracao nova o
+# Brasil/imediatas/intermediarias caem depois dos estratos e seguem
+# fora pelo mesmo gate ou pelo limite.
+# Niveis submunicipais ganham blocos proprios a partir de 100000 (setores,
+# bairros 1000000+, areas de ponderacao 2000000+) e ficam FORA deste
+# filtro — copia local de niveis_submunicipal_inicio
+# (R/niveis_territoriais.R): o esqueleto do painel e autocontido.
+painel_municipio_limite_id <- 5572L
 painel_pnad_bloco_fim <- 7087L
+.painel_bloco_env <- new.env(parent = emptyenv())
+
+#' Fim do bloco PNAD: local_id da linha "Brasil" (dinamico; cai no
+#' fallback estatico sem a linha). Cache de sessao em environment
+#' proprio (namespace e travado apos o load).
+painel_pnad_bloco_fim_resolver <- function(con) {
+  if (is.null(.painel_bloco_env$fim)) {
+    v <- tryCatch(as.integer(DBI::dbGetQuery(con, paste(
+      "SELECT local_id FROM local WHERE local_name = 'Brasil'",
+      "ORDER BY local_id LIMIT 1"))$local_id[1]),
+      error = function(e) NA_integer_)
+    .painel_bloco_env$fim <- if (is.na(v)) painel_pnad_bloco_fim else v
+  }
+  .painel_bloco_env$fim
+}
+painel_submunicipal_inicio <- 100000L
 
 #' Fragmento SQL que seleciona apenas municipios (alias `l` no chamador)
 painel_municipio_filtro <- function(alias = "l") {
-  sprintf("(%s.local_id < %d OR %s.local_id > %d)",
-          alias, painel_municipio_limite_id, alias, painel_pnad_bloco_fim)
+  bloco_fim <- if (!is.null(.painel_bloco_env$fim)) .painel_bloco_env$fim else
+    painel_pnad_bloco_fim
+  sprintf("(%s.local_id < %d OR (%s.local_id > %d AND %s.local_id < %d))",
+          alias, painel_municipio_limite_id, alias, bloco_fim,
+          alias, painel_submunicipal_inicio)
 }
 
 #' Decodifica a chave de nivel territorial do painel
 #'
 #' A chave e a largura do geoloc_id como texto ("1".."8") ou "7p" para as
 #' regioes de interesse em PNAD Contínua, que dividem a largura 7 com os
-#' municipios. Devolve o nivel numerico, se e o subnivel PNAD e o fragmento
-#' SQL que seleciona os locais do nivel (pressupoe aliases `l` e `g` no
-#' chamador).
+#' municipios. Niveis submunicipais usam o proprio `nivel_tipo` como chave
+#' ("bairro", "subdistrito", "setor", "area_ponderacao") — bairro e
+#' subdistrito dividem a largura 11, entao a largura nao distingue niveis.
+#' Devolve o nivel numerico (largura representativa nos submunicipais), o
+#' tipo quando ha, se e o subnivel PNAD e o fragmento SQL que seleciona os
+#' locais do nivel (pressupoe aliases `l` e `g` no chamador).
 #' @keywords internal
 painel_nivel_parse <- function(nivel_id) {
   chave <- suppressWarnings(trimws(as.character(nivel_id)[1]))
   if (is.na(chave)) chave <- ""
-  pnad <- nzchar(chave) && tolower(chave) == "7p"
-  nivel <- if (pnad) 7L else suppressWarnings(as.integer(chave))[1]
+  chave <- tolower(chave)
+  pnad <- nzchar(chave) && chave == "7p"
+  tipo <- if (!pnad && grepl("^[a-z_]+$", tolower(chave))) tolower(chave) else
+    NA_character_
+  nivel <- if (pnad) {
+    7L
+  } else if (!is.na(tipo) && tipo %in% names(painel_nivel_tipo_largura)) {
+    unname(painel_nivel_tipo_largura[tipo])
+  } else {
+    suppressWarnings(as.integer(chave))[1]
+  }
   if (!is.na(nivel) && nivel < 1L) nivel <- NA_integer_
+  bloco_fim <- if (!is.null(.painel_bloco_env$fim)) .painel_bloco_env$fim else
+    painel_pnad_bloco_fim
   filtro <- if (is.na(nivel)) {
     "1 = 0"
+  } else if (!is.na(tipo)) {
+    sprintf("l.nivel_tipo = '%s'", tipo)
   } else if (pnad) {
     sprintf("length(g.geoloc_id::text) = 7 AND l.local_id >= %d AND l.local_id <= %d",
-            painel_municipio_limite_id, painel_pnad_bloco_fim)
+            painel_municipio_limite_id, bloco_fim)
   } else if (identical(nivel, 7L)) {
+    bloco_fim7 <- if (!is.null(.painel_bloco_env$fim)) .painel_bloco_env$fim else
+      painel_pnad_bloco_fim
     sprintf("length(g.geoloc_id::text) = 7 AND %s", painel_municipio_filtro())
   } else {
     sprintf("length(g.geoloc_id::text) = %d", nivel)
   }
   list(nivel = nivel, pnad = pnad,
-       chave = if (is.na(nivel)) NA_character_ else
-         if (pnad) "7p" else as.character(nivel),
+       chave = if (is.na(nivel)) NA_character_ else chave,
+       tipo = tipo,
        filtro = filtro)
 }
 
@@ -386,18 +554,25 @@ painel_uf_sigla <- c(
   "51" = "MT", "52" = "GO", "53" = "DF")
 
 #' Niveis territoriais disponiveis no DW: apenas os que possuem dados,
-#' com quantidade de localidades distintas. A largura 7 aparece em duas
-#' linhas — municipios ("7") e regioes de interesse em PNAD Contínua
-#' ("7p") — para nao somar 5.570 + 146 numa unica entrada. O EXISTS varre
+#' com quantidade de localidades distintas. Niveis submunicipais sao
+#' chaveados pelo `nivel_tipo` ("bairro", "subdistrito", "setor",
+#' "area_ponderacao") — a largura nao distingue bairro de subdistrito;
+#' linhas submunicipais gravadas antes do nivel_tipo caem na chave de
+#' largura legada. A largura 7 aparece em duas linhas — municipios ("7")
+#' e regioes de interesse em PNAD Contínua ("7p") — para nao somar
+#' 5.570 + 146 numa unica entrada. O EXISTS varre
 #' o catalogo de locais (milissegundos com o indice
 #' data_values(local_id), ver [garantir_indice_valores()]) em vez de
 #' agregar os ~10 milhoes de pontos do data_values
 #' @keywords internal
 painel_niveis <- function(con) {
+  painel_pnad_bloco_fim_resolver(con)
   q <- DBI::dbGetQuery(con, paste(
-    "SELECT CASE WHEN length(g.geoloc_id::text) = 7",
-    sprintf("AND l.local_id >= %d AND l.local_id <= %d THEN '7p'",
-            painel_municipio_limite_id, painel_pnad_bloco_fim),
+    "SELECT CASE WHEN l.local_id >=", painel_submunicipal_inicio,
+    "THEN coalesce(l.nivel_tipo, length(g.geoloc_id::text)::text)",
+    sprintf("WHEN length(g.geoloc_id::text) = 7 AND l.local_id >= %d AND l.local_id <= %d THEN '7p'",
+            painel_municipio_limite_id,
+            painel_pnad_bloco_fim_resolver(con)),
     "ELSE length(g.geoloc_id::text)::text END AS nivel_id,",
     "count(*)::int AS n_locais",
     "FROM local l",
@@ -405,13 +580,24 @@ painel_niveis <- function(con) {
     "WHERE EXISTS (SELECT 1 FROM data_values v WHERE v.local_id = l.local_id)",
     "GROUP BY 1 ORDER BY 1"))
   q$rotulo <- unname(painel_niveis_rotulo[q$nivel_id])
+  # largura fora do registro nao some: rótulo generico mantem o nivel
+  # visivel no painel ate o registro ser atualizado
+  falta <- is.na(q$rotulo) & grepl("^[0-9]+$", q$nivel_id)
+  q$rotulo[falta] <- paste0("Nível de ", q$nivel_id[falta], " dígitos")
   q[!is.na(q$rotulo), ]
 }
 
-#' Nivel territorial de abertura default da aba Regiao: municipal quando
-#' disponivel, senao UF
+#' Nivel territorial de abertura default da aba Regiao: a variavel de
+#' ambiente `painel_nivel` (chave do nivel, ex.: `subdistrito` ou `2`)
+#' decide quando o nivel existe no catalogo; sem a variavel ou com nivel
+#' indisponivel, municipal quando disponivel, senao UF
 #' @keywords internal
-painel_nivel_default <- function(niveis) {
+painel_nivel_default <- function(niveis, padrao = Sys.getenv("painel_nivel", "")) {
+  alvo <- trimws(as.character(padrao)[1])
+  if (!is.na(alvo) && nzchar(alvo) && !is.null(niveis) && NROW(niveis) &&
+      alvo %in% as.character(niveis$nivel_id)) {
+    return(alvo)
+  }
   if (is.null(niveis) || !nrow(niveis)) return("2")
   alvo <- which(grepl("Munic", niveis$rotulo, fixed = TRUE))
   if (length(alvo)) as.character(niveis$nivel_id[alvo[1]]) else "2"
@@ -458,6 +644,11 @@ painel_locais_nivel <- function(con, nivel_id) {
   rotulo <- if (identical(p$nivel, 7L) && !p$pnad) {
     sigla <- unname(painel_uf_sigla[q$uf])
     ifelse(is.na(sigla), q$local_name, paste0(q$local_name, " (", sigla, ")"))
+  } else if (p$pnad) {
+    # estratos PNAD dividem nomes com municipios (ex.: "Brasilia" e
+    # tambem a RM PNAD): rotulo explicito evita escolher o estrato
+    # esperando o municipio
+    paste0(q$local_name, " (PNAD)")
   } else {
     q$local_name
   }
@@ -531,6 +722,42 @@ painel_geo_nivel <- function(con, nivel_id, max_feicoes = 700L) {
   geo[, c("code", "label", "geometry")]
 }
 
+#' Botao "usar minha localizacao" da aba Regiao esta ativo? A variavel de
+#' ambiente `painel_geolocalizacao=1` habilita o pedido de posicao ao
+#' navegador (Geolocation API, exige HTTPS ou localhost) para selecionar a
+#' localidade mais proxima do nivel corrente; qualquer outro valor (ou
+#' variavel ausente) mantem o painel sem o botao
+#' @keywords internal
+painel_geolocalizacao_ativa <- function() {
+  identical(Sys.getenv("painel_geolocalizacao"), "1")
+}
+
+#' Localidade mais proxima de um ponto (lat/lon WGS84) entre as feicoes de
+#' um nivel: a que contem o ponto quando ha, senao a de representacao
+#' interna mais proxima. Opera sem o s2 (GEOS plano, suficiente em escala
+#' de cidade) porque malhas do Censo chegam com aneis invalidos (vertice
+#' duplicado) que derrubam a construcao da geografia s2 antes de qualquer
+#' predicado; NA quando nao ha feicoes ou coordenadas
+#' @keywords internal
+painel_geo_mais_proxima <- function(geo, lat, lon) {
+  if (is.null(geo) || !nrow(geo)) return(NA_character_)
+  lat <- suppressWarnings(as.numeric(lat)[1])
+  lon <- suppressWarnings(as.numeric(lon)[1])
+  if (is.na(lat) || is.na(lon)) return(NA_character_)
+  s2_antigo <- sf::sf_use_s2()
+  on.exit(sf::sf_use_s2(s2_antigo), add = TRUE)
+  sf::sf_use_s2(FALSE)
+  ponto <- sf::st_sfc(sf::st_point(c(lon, lat)), crs = 4326)
+  dentro <- unlist(sf::st_intersects(ponto, sf::st_geometry(geo),
+                                      sparse = TRUE))
+  if (length(dentro)) return(as.character(geo$code[dentro[1]]))
+  centros <- suppressWarnings(
+    sf::st_point_on_surface(sf::st_geometry(geo)))
+  d <- as.numeric(sf::st_distance(centros, ponto))
+  if (!length(d) || all(is.na(d))) return(NA_character_)
+  as.character(geo$code[which.min(d)])
+}
+
 #' Geometria de uma localidade (destaque do globo quando a base e a das
 #' UFs e a selecao nao esta entre as feicoes)
 #' @keywords internal
@@ -572,6 +799,7 @@ painel_geo_pai_uf <- function(con, local_id) {
 #' desenhadas no globo ao redor do municipio em destaque
 #' @keywords internal
 painel_geo_mun_uf <- function(con, uf) {
+  painel_pnad_bloco_fim_resolver(con)
   uf <- as.character(uf)[1]
   if (is.na(uf) || !grepl("^[0-9]{2}$", uf)) return(painel_geo_vazio())
   geo <- sf::st_read(con, query = sprintf(paste(
@@ -582,6 +810,70 @@ painel_geo_mun_uf <- function(con, uf) {
             painel_municipio_filtro()),
     "ORDER BY l.local_id"),
     uf), quiet = TRUE)
+  geo$code <- as.character(geo$local_id)
+  geo$label <- geo$local_name
+  geo[, c("code", "label", "geometry")]
+}
+
+#' Feicoes submunicipais do mesmo nivel dentro de um municipio (prefixo de
+#' 7 digitos do geoloc_id — setor, bairro, subdistrito e area de ponderacao
+#' codificam o municipio nos primeiros digitos), simplificadas no SQL —
+#' malha do globo quando o destaque e submunicipal: as feicoes do nivel
+#' tesselam o municipio em foco. O nivel e selecionado pelo `nivel_tipo`
+#' (largura nao distingue bairro de subdistrito); sem tipo (legado), pela
+#' largura. Acima do teto de feicoes volta vazio e o globo fica apenas
+#' com o destaque sobre a UF (degradacao). Malhas grandes (acima de 2 mil
+#' feicoes, como os setores censitarios de uma capital inteira) ganham
+#' simplificacao mais forte no SQL para caberem no mapa, que usa teto
+#' proprio em [painel_geo_irmaos_nivel_cache()].
+#' @keywords internal
+painel_geo_irmaos_mun <- function(con, mun, tipo = NULL, larg = NULL,
+                                  max_feicoes = 2000L) {
+  mun <- trimws(as.character(mun)[1])
+  if (is.na(mun) || !grepl("^[0-9]{7}$", mun)) return(painel_geo_vazio())
+  escopo <- sprintf("left(g.geoloc_id::text, 7) = '%s'", mun)
+  tipo <- if (length(tipo) == 1 && !is.na(tipo) && nzchar(tipo)) tipo else NULL
+  escopo <- if (!is.null(tipo))
+    paste(escopo, sprintf("AND l.nivel_tipo = '%s'", tipo))
+  else if (!is.null(larg))
+    paste(escopo, sprintf("AND length(g.geoloc_id::text) = %d",
+                          as.integer(larg)))
+  else paste(escopo, "AND length(g.geoloc_id::text) > 10")
+  n_geo <- DBI::dbGetQuery(con, sprintf(paste(
+    "SELECT count(*)::int AS n FROM local l",
+    "JOIN geoloc g USING (geoloc_id) WHERE %s"), escopo))$n
+  if (!length(n_geo) || is.na(n_geo) || n_geo < 1L || n_geo > max_feicoes) {
+    return(painel_geo_vazio())
+  }
+  # tolerancia adaptativa: malhas grandes (capital inteira de setores)
+  # simplificam mais forte para o geojson caber no navegador
+  tol <- if (n_geo > 2000L) 0.001 else 0.0005
+  geo <- sf::st_read(con, query = sprintf(paste(
+    "SELECT l.local_id, l.local_name,",
+    "ST_SimplifyPreserveTopology(g.geometry, %s) AS geometry",
+    "FROM local l JOIN geoloc g USING (geoloc_id)",
+    "WHERE %s",
+    "ORDER BY l.local_id"),
+    tol, escopo), quiet = TRUE)
+  geo$code <- as.character(geo$local_id)
+  geo$label <- geo$local_name
+  geo[, c("code", "label", "geometry")]
+}
+
+#' Contorno simplificado do municipio dono de um codigo submunicipal
+#' (geoloc de 7 digitos): degradacao do mapa quando a malha do nivel
+#' excede o limite de feicoes dentro do municipio
+#' @keywords internal
+painel_geo_municipio_codigo <- function(con, codigo) {
+  codigo <- trimws(as.character(codigo)[1])
+  if (is.na(codigo) || !grepl("^[0-9]{7}$", codigo)) return(painel_geo_vazio())
+  geo <- sf::st_read(con, query = sprintf(paste(
+    "SELECT l.local_id, l.local_name,",
+    "ST_SimplifyPreserveTopology(g.geometry, 0.005) AS geometry",
+    "FROM local l JOIN geoloc g USING (geoloc_id)",
+    "WHERE g.geoloc_id::text = '%s'",
+    "AND length(g.geoloc_id::text) = 7"),
+    codigo), quiet = TRUE)
   geo$code <- as.character(geo$local_id)
   geo$label <- geo$local_name
   geo[, c("code", "label", "geometry")]
@@ -643,6 +935,55 @@ painel_locais_com_dados <- function(con, mdata_id, nivel_id) {
     "WHERE v.mdata_id = %d AND %s"),
     mdata_id, p$filtro))
   as.character(q$local_id)
+}
+
+#' Nivel territorial onde um indicador vive: a chave de nivel (mesma
+#' convencao de [painel_niveis()]) com mais localidades com dados dele —
+#' municipais dao "7", submunicipais dao o proprio nivel_tipo. Indicador
+#' sem dados devolve NA
+#' @keywords internal
+painel_ind_nivel <- function(con, mdata_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  if (is.na(mdata_id)) return(NA_character_)
+  painel_pnad_bloco_fim_resolver(con)
+  q <- DBI::dbGetQuery(con, sprintf(paste(
+    "SELECT CASE WHEN l.local_id >=", painel_submunicipal_inicio,
+    "THEN coalesce(l.nivel_tipo, length(g.geoloc_id::text)::text)",
+    sprintf("WHEN length(g.geoloc_id::text) = 7 AND l.local_id >= %d AND l.local_id <= %d THEN '7p'",
+            painel_municipio_limite_id, painel_pnad_bloco_fim_resolver(con)),
+    "ELSE length(g.geoloc_id::text)::text END AS nivel_id,",
+    "count(DISTINCT v.local_id)::int AS n_locais",
+    "FROM data_values v",
+    "JOIN local l USING (local_id)",
+    "JOIN geoloc g USING (geoloc_id)",
+    "WHERE v.mdata_id = %d",
+    "GROUP BY 1",
+    "ORDER BY n_locais DESC, nivel_id"),
+    mdata_id))
+  if (nrow(q)) as.character(q$nivel_id[1]) else NA_character_
+}
+
+#' Municipios (geoloc de 7 digitos) que contem feicoes de um nivel
+#' submunicipal com dados de um indicador, com a contagem de feicoes —
+#' decide quais malhas locais o mapa carrega quando a do nivel inteiro e
+#' pesada demais (acima do limite de feicoes)
+#' @keywords internal
+painel_muns_nivel_dados <- function(con, mdata_id, nivel_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  p <- painel_nivel_parse(nivel_id)
+  vazio <- data.frame(municipio = character(0), n_locais = integer(0))
+  if (is.na(mdata_id) || is.na(p$nivel)) return(vazio)
+  if (is.na(p$tipo) && p$nivel <= 10L) return(vazio)
+  DBI::dbGetQuery(con, sprintf(paste(
+    "SELECT left(g.geoloc_id::text, 7) AS municipio,",
+    "count(DISTINCT v.local_id)::int AS n_locais",
+    "FROM data_values v",
+    "JOIN local l USING (local_id)",
+    "JOIN geoloc g USING (geoloc_id)",
+    "WHERE v.mdata_id = %d AND %s",
+    "AND length(g.geoloc_id::text) > 10",
+    "GROUP BY 1 ORDER BY n_locais DESC, municipio"),
+    mdata_id, p$filtro))
 }
 
 # Familia de indicadores de cada eixo do catalogo: o prefixo de orig_name
@@ -751,9 +1092,11 @@ painel_opcoes_indicador <- function(md) {
 #' @keywords internal
 painel_hierarquia <- function(con) {
   md <- DBI::dbGetQuery(con, paste(
-    "SELECT m.mdata_id, m.orig_name, m.data_name, e.data_class_id",
+    "SELECT m.mdata_id, m.orig_name, m.data_name, e.data_class_id,",
+    "e.dataunit_num AS unidade",
     "FROM mdata m LEFT JOIN mdata_exts e USING (mdata_id)",
     "ORDER BY m.mdata_id"))
+  md$unidade <- painel_unidade_normaliza(md$unidade)
   md$datagroup_name <- painel_grupo_indicador(md$orig_name)
   md <- md[!is.na(md$datagroup_name), ]
   grupos <- DBI::dbGetQuery(con,
@@ -764,7 +1107,8 @@ painel_hierarquia <- function(con) {
   md$raiz_id <- grupos$datagroup_id[match(md$raiz_nome, grupos$datagroup_name)]
   md <- md[order(md$raiz_nome, md$datagroup_id, md$mdata_id),
            c("raiz_id", "raiz_nome", "datagroup_id", "datagroup_name",
-             "mdata_id", "data_class_id", "orig_name", "data_name")]
+             "mdata_id", "data_class_id", "orig_name", "data_name",
+             "unidade")]
   rownames(md) <- NULL
   md
 }
@@ -779,49 +1123,174 @@ painel_compostos <- function(con) {
     "ORDER BY m.orig_name"))
 }
 
-#' Resumo por grupo do catalogo: um cartao por indicador composto com o
-#' valor mais recente na localidade (rotulo, valor e ano) — conteudo do
-#' "Resumo da regiao" na aba Regiao
-#'
-#' @param hierarquia tabela de [painel_hierarquia()]
-#' @param compostos tabela de [painel_compostos()]
-#' @param valores tabela de [painel_valores_local_todos()]
+#' Nome do grupo curado do resumo no catalogo (tabela datagroup): os
+#' indicadores ligados a ele em mdata_group sao os cartoes do "Resumo da
+#' regiao", escolhidos no app do beep (aba Variaveis e Indicadores). Deve
+#' bater com [beep_grupo_resumo_nome] do pacote (guardado por teste)
 #' @keywords internal
-painel_resumo_grupos <- function(hierarquia, compostos, valores,
-                               ano = NULL) {
+painel_grupo_resumo_nome <- "Resumo"
+
+#' Separador do rotulo dos cartoes do resumo (travessao, em UTF-8)
+#' @keywords internal
+painel_resumo_sep <- " \u2014 "
+
+#' Fonte de cada indicador do catalogo — base do agrupamento "por fonte"
+#' do resumo quando o DW nao tem eixos/objetivos nem grupo Resumo
+#' @keywords internal
+painel_fontes <- function(con) {
+  DBI::dbGetQuery(con, paste(
+    "SELECT m.mdata_id, m.orig_name, m.data_name, e.data_class_id,",
+    "nullif(trim(coalesce(e.dataunit_num, '')), '') AS unidade,",
+    "coalesce(d.datasource_name, 'Sem fonte cadastrada') AS fonte",
+    "FROM mdata m",
+    "LEFT JOIN mdata_exts e ON e.mdata_id = m.mdata_id",
+    "LEFT JOIN datasource d ON d.datasource_id = e.datasource_id",
+    "ORDER BY m.mdata_id"))
+}
+
+#' Membros do grupo Resumo do catalogo (datagroup "Resumo" via mdata_group),
+#' com a fonte de cada um — vazio quando o grupo nao existe ou nao tem
+#' vinculos; o painel le fail-open e cai nos compostos ou nas fontes
+#' @keywords internal
+painel_grupo_resumo <- function(con) {
+  DBI::dbGetQuery(con, paste(
+    "SELECT m.mdata_id, m.orig_name, m.data_name, e.data_class_id,",
+    "nullif(trim(coalesce(e.dataunit_num, '')), '') AS unidade,",
+    "coalesce(d2.datasource_name, 'Sem fonte cadastrada') AS fonte",
+    "FROM mdata m",
+    "JOIN mdata_group g ON g.mdata_id = m.mdata_id",
+    "JOIN datagroup d ON d.datagroup_id = g.datagroup_id",
+    "LEFT JOIN mdata_exts e ON e.mdata_id = m.mdata_id",
+    "LEFT JOIN datasource d2 ON d2.datasource_id = e.datasource_id",
+    "WHERE d.datagroup_name = 'Resumo'",
+    "ORDER BY m.mdata_id"))
+}
+
+#' Nucleo do resumo: valor mais recente (e o anterior) de cada indicador
+#' pedido na localidade, ate a data de corte
+#'
+#' @param indicadores data.frame com `mdata_id`, `rotulo`, `grupo` e `raiz`
+#'   (uma linha por cartao do resumo, na ordem desejada); a coluna opcional
+#'   `unidade` (ex.: "%") acompanha cada linha — frames sem ela (caches
+#'   antigos em disco, fixtures) seguem com unidade NA
+#' @param valores tabela de [painel_valores_local_todos()]
+#' @param refdate data de corte: sem ela, a observacao mais recente; com ela,
+#'   a ultima observacao em ou antes da data (slider por data do resumo)
+#' @keywords internal
+painel_resumo_linhas <- function(indicadores, valores, refdate = NULL) {
   vazio <- data.frame(grupo = character(0), raiz = character(0),
                       mdata_id = integer(0), rotulo = character(0),
                       valor = numeric(0), refdate = as.Date(character(0)),
                       valor_ant = numeric(0),
-                      refdate_ant = as.Date(character(0)))
-  if (!NROW(hierarquia) || !NROW(compostos) || !NROW(valores)) return(vazio)
-  h <- hierarquia[hierarquia$mdata_id %in% compostos$mdata_id, ]
-  if (!nrow(h)) return(vazio)
-  ano <- suppressWarnings(as.integer(ano)[1])
-  linhas <- lapply(seq_len(nrow(h)), function(i) {
-    v <- valores[valores$mdata_id == h$mdata_id[i] &
+                      refdate_ant = as.Date(character(0)),
+                      unidade = character(0))
+  if (!NROW(indicadores) || !NROW(valores)) return(vazio)
+  unid <- if (is.data.frame(indicadores) &&
+              "unidade" %in% names(indicadores))
+    indicadores$unidade else rep(NA_character_, nrow(indicadores))
+  refdate <- as.Date(refdate)[1]
+  linhas <- lapply(seq_len(nrow(indicadores)), function(i) {
+    v <- valores[valores$mdata_id == indicadores$mdata_id[i] &
                    is.finite(valores$value), ]
     if (!nrow(v)) return(NULL)
-    if (!is.na(ano))
-      v <- v[as.integer(format(v$refdate, "%Y")) <= ano, , drop = FALSE]
+    if (!is.na(refdate))
+      v <- v[v$refdate <= refdate, , drop = FALSE]
     if (!nrow(v)) return(NULL)
-    ultimo <- which.max(v$refdate)
-    anterior <- if (ultimo > 1L) ultimo - 1L else 0L
-    nome <- h$data_name[i]
-    if (is.na(nome) || !nzchar(nome)) nome <- h$orig_name[i]
-    data.frame(grupo = h$datagroup_name[i], raiz = h$raiz_nome[i],
-               mdata_id = h$mdata_id[i],
-               rotulo = paste0(trimws(nome), " — ", h$datagroup_name[i]),
+    v <- v[order(v$refdate), , drop = FALSE]
+    ultimo <- nrow(v)
+    anterior <- ultimo - 1L
+    data.frame(grupo = indicadores$grupo[i], raiz = indicadores$raiz[i],
+               mdata_id = indicadores$mdata_id[i],
+               rotulo = indicadores$rotulo[i],
                valor = v$value[ultimo], refdate = v$refdate[ultimo],
                valor_ant = if (anterior) v$value[anterior] else NA_real_,
                refdate_ant = if (anterior) v$refdate[anterior]
-                            else as.Date(NA))
+                            else as.Date(NA),
+               unidade = unid[i])
   })
   linhas <- linhas[!vapply(linhas, is.null, logical(1))]
   if (!length(linhas)) return(vazio)
   resumo <- do.call(rbind, linhas)
   rownames(resumo) <- NULL
   resumo
+}
+
+#' Rotulo de exibicao de um indicador do catalogo (data_name ou orig_name)
+#' @keywords internal
+painel_resumo_nome <- function(orig_name, data_name) {
+  nome <- trimws(as.character(data_name))
+  sem_nome <- is.na(nome) | !nzchar(nome)
+  nome[sem_nome] <- trimws(as.character(orig_name))[sem_nome]
+  nome
+}
+
+#' Resumo por grupo do catalogo: um cartao por indicador composto com o
+#' valor mais recente na localidade ate a data de corte (rotulo, valor e
+#' data) — conteudo do "Resumo da regiao" na aba Regiao
+#'
+#' @param hierarquia tabela de [painel_hierarquia()]
+#' @param compostos tabela de [painel_compostos()]
+#' @param valores tabela de [painel_valores_local_todos()]
+#' @param refdate data de corte: sem ela, a observacao mais recente; com ela,
+#'   a ultima observacao em ou antes da data (slider por data do resumo)
+#' @keywords internal
+painel_resumo_grupos <- function(hierarquia, compostos, valores,
+                               refdate = NULL) {
+  h <- NULL
+  if (NROW(hierarquia) && NROW(compostos))
+    h <- hierarquia[hierarquia$mdata_id %in% compostos$mdata_id, , drop = FALSE]
+  if (!NROW(h)) return(painel_resumo_linhas(NULL, valores, refdate))
+  ind <- data.frame(
+    mdata_id = h$mdata_id,
+    rotulo = paste0(painel_resumo_nome(h$orig_name, h$data_name),
+                    painel_resumo_sep, h$datagroup_name),
+    grupo = h$datagroup_name, raiz = h$raiz_nome,
+    unidade = if ("unidade" %in% names(h)) h$unidade
+              else rep(NA_character_, nrow(h)))
+  painel_resumo_linhas(ind, valores, refdate)
+}
+
+#' Resumo por fonte (fallback geral): um cartao por indicador do catalogo
+#' com valor na localidade, rotulado com a fonte e ordenado por fonte —
+#' alimenta o "Resumo da regiao" quando nao ha grupo Resumo curado nem
+#' compostos por eixo/objetivo
+#' @keywords internal
+painel_resumo_fontes <- function(fontes, valores, refdate = NULL) {
+  if (!NROW(fontes)) return(painel_resumo_linhas(NULL, valores, refdate))
+  fonte <- as.character(fontes$fonte)
+  if (!length(fonte) || all(is.na(fonte)))
+    fonte <- rep("Sem fonte cadastrada", NROW(fontes))
+  fonte[is.na(fonte)] <- "Sem fonte cadastrada"
+  ordem <- order(fonte, fontes$mdata_id)
+  ind <- data.frame(
+    mdata_id = fontes$mdata_id[ordem],
+    rotulo = paste0(painel_resumo_nome(fontes$orig_name, fontes$data_name)[ordem],
+                    painel_resumo_sep, fonte[ordem]),
+    grupo = fonte[ordem],
+    raiz = rep("Por fonte", length(ordem)),
+    unidade = if ("unidade" %in% names(fontes)) fontes$unidade[ordem]
+              else rep(NA_character_, length(ordem)))
+  painel_resumo_linhas(ind, valores, refdate)
+}
+
+#' Resumo com os membros do grupo Resumo (curados no app do beep): um
+#' cartao por membro, rotulado com a fonte quando ela existe
+#' @keywords internal
+painel_resumo_membros <- function(membros, valores, refdate = NULL) {
+  if (!NROW(membros)) return(painel_resumo_linhas(NULL, valores, refdate))
+  fonte <- as.character(membros$fonte)
+  fonte[is.na(fonte)] <- "Sem fonte cadastrada"
+  rotulo <- painel_resumo_nome(membros$orig_name, membros$data_name)
+  tem_fonte <- !is.na(fonte) & fonte != "Sem fonte cadastrada"
+  rotulo[tem_fonte] <- paste0(rotulo[tem_fonte], painel_resumo_sep,
+                              fonte[tem_fonte])
+  ind <- data.frame(
+    mdata_id = membros$mdata_id, rotulo = rotulo,
+    grupo = rep(painel_grupo_resumo_nome, nrow(membros)),
+    raiz = rep(painel_grupo_resumo_nome, nrow(membros)),
+    unidade = if ("unidade" %in% names(membros)) membros$unidade
+              else rep(NA_character_, nrow(membros)))
+  painel_resumo_linhas(ind, valores, refdate)
 }
 
 #' Valores de TODOS os indicadores em uma localidade — alimenta o resumo
@@ -839,34 +1308,129 @@ painel_valores_local_todos <- function(con, local_id) {
     local_id))
 }
 
-#' GeoJSON (string) de um objeto sf para mensagens Shiny ao cliente
+#' Reorienta os aneis de um GeoJSON para o cliente do globo (d3-geo)
+#'
+#' O d3-geo decide o interior de um poligono esferico pela orientacao dos
+#' aneis, na convencao oposta ao RFC 7946: exterior no sentido horario
+#' (area com sinal negativa em graus) e furos no anti-horario. As malhas
+#' do IBGE (UFs, municipios) ja vem assim, mas as geometrias derivadas do
+#' Censo 2022 (bairros, subdistritos, setores, areas de ponderacao,
+#' gravadas pelos incorporar_*) chegam invertidas; sem normalizacao o
+#' globo desenha o complemento de cada feicao (o disco inteiro pintado) e
+#' a tela fica em branco com o azulado translucido da selecao por cima.
+#' O ajuste e local ao GeoJSON enviado ao navegador (globo: nivel,
+#' destaque, contexto e malha); as geometrias do banco nao mudam e o
+#' driver GeoJSON do GDAL nao tem opcao equivalente (RFC7946=YES nao e
+#' suportado na escrita).
+#' @keywords internal
+painel_geojson_orientar <- function(texto) {
+  area_anel <- function(anel) {
+    m <- matrix(unlist(anel), ncol = 2, byrow = TRUE)
+    n <- nrow(m)
+    if (n < 4) return(0)
+    sum(m[seq_len(n - 1), 1] * m[2:n, 2] -
+          m[2:n, 1] * m[seq_len(n - 1), 2]) / 2
+  }
+  orientar_anel <- function(anel, exterior) {
+    area <- area_anel(anel)
+    if (is.na(area) || area == 0) return(anel)
+    # exterior quer sentido horario (area negativa); furo, anti-horario
+    if (identical(area < 0, exterior)) anel else rev(anel)
+  }
+  orientar_poligono <- function(pol) {
+    lapply(seq_along(pol), function(i) orientar_anel(pol[[i]], i == 1))
+  }
+  gj <- jsonlite::fromJSON(texto, simplifyVector = FALSE)
+  if (!is.list(gj) || !is.list(gj$features)) return(texto)
+  gj$features <- lapply(gj$features, function(f) {
+    geom <- f$geometry
+    if (is.list(geom) && !is.null(geom$type) &&
+        !is.null(geom$coordinates)) {
+      if (identical(geom$type, "Polygon")) {
+        geom$coordinates <- orientar_poligono(geom$coordinates)
+      } else if (identical(geom$type, "MultiPolygon")) {
+        geom$coordinates <- lapply(geom$coordinates, orientar_poligono)
+      }
+      f$geometry <- geom
+    }
+    f
+  })
+  jsonlite::toJSON(gj, auto_unbox = TRUE, digits = 7)
+}
+
+#' GeoJSON (string) de um objeto sf para mensagens Shiny ao cliente,
+#' com aneis reorientados para o d3-geo do globo (ver
+#' [painel_geojson_orientar()])
 #' @keywords internal
 painel_geojson <- function(x) {
   arquivo <- tempfile(fileext = ".geojson")
   on.exit(unlink(arquivo), add = TRUE)
   sf::st_write(x, arquivo, quiet = TRUE)
-  paste(readLines(arquivo, warn = FALSE, encoding = "UTF-8"), collapse = "")
+  texto <- paste(readLines(arquivo, warn = FALSE, encoding = "UTF-8"),
+                 collapse = "")
+  painel_geojson_orientar(texto)
 }
 
 #' Paleta de cores do mapa (port fiel do mypallet do labourvaluesdatapanel):
 #' divergente centrada em 0 quando ha negativos, com rampas invertidas
-#' conforme o argumento (checkbox "Inverter cores da escala")
+#' conforme o argumento (checkbox "Inverter cores da escala"; a inversao
+#' tambem vale para dados so positivos). O argumento escala controla o
+#' dominio das cores (seletor "Escala" da toolbar do mapa): "zero" ancora
+#' em 0 (historico, comparavel entre datas), "minmax" usa a faixa observada
+#' no refdate (contraste maximo em faixas estreitas, como taxas de 16 a
+#' 23%) e "quantil" classifica por posicao no ranking (colorQuantile).
 #' @keywords internal
-painel_paleta <- function(values, invertida = FALSE) {
+painel_paleta <- function(values, invertida = FALSE,
+                          escala = c("zero", "minmax", "quantil")) {
+  escala <- match.arg(escala)
   values[!is.finite(values)] <- NA_real_
   if (!any(is.finite(values))) {
     return(function(value) rep("transparent", length(value)))
   }
+  finitos <- values[is.finite(values)]
   qtt <- length(values)
   if (isTRUE(invertida)) {
-    negative <- grDevices::colorRampPalette(c("#0000FF", "#C8C8FF"))(qtt)
-    positive <- grDevices::colorRampPalette(c("#FFC8C8", "#FF0000"))(qtt)
+    rampa_neg <- grDevices::colorRampPalette(c("#0000FF", "#C8C8FF"))
+    rampa_pos <- grDevices::colorRampPalette(c("#FFC8C8", "#FF0000"))
+    rampa_so_positivos <- grDevices::colorRampPalette(c("#FF0000", "#FFC8C8"))
   } else {
-    negative <- grDevices::colorRampPalette(c("#FF0000", "#C8C8FF"))(qtt)
-    positive <- grDevices::colorRampPalette(c("#C8C8FF", "#0000FF"))(qtt)
+    rampa_neg <- grDevices::colorRampPalette(c("#FF0000", "#C8C8FF"))
+    rampa_pos <- grDevices::colorRampPalette(c("#C8C8FF", "#0000FF"))
+    rampa_so_positivos <- grDevices::colorRampPalette(c("#FFC8C8", "#FF0000"))
   }
-  onlypositive <- grDevices::colorRampPalette(c("#FFC8C8", "#FF0000"))(qtt)
 
+  # quantil: classes por posicao no ranking; sem valores distintos nao ha
+  # quebras, entao cai no modo "zero"
+  if (escala == "quantil" && length(unique(finitos)) > 1) {
+    return(leaflet::colorQuantile(rampa_so_positivos(5), domain = finitos,
+                                  n = 5, na.color = "transparent"))
+  }
+
+  if (escala == "minmax") {
+    dominio <- range(finitos)
+    if (dominio[1] == dominio[2]) {
+      margem <- max(abs(dominio[1]) * 1e-8, 1e-12)
+      dominio <- dominio + c(-margem, margem)
+    }
+    if (dominio[1] >= 0) {
+      cores <- rampa_so_positivos(2 * qtt)
+    } else if (dominio[2] <= 0) {
+      cores <- rampa_neg(2 * qtt)
+    } else {
+      # rampa divergente partida no valor 0, nao no meio mecanico do
+      # dominio: a fatia negativa recebe cores na proporcao da distancia
+      # do minimo ate o zero
+      frac0 <- (0 - dominio[1]) / (dominio[2] - dominio[1])
+      n_neg <- max(1, min(2 * qtt - 1, round(2 * qtt * frac0)))
+      cores <- c(rampa_neg(n_neg), rampa_pos(2 * qtt - n_neg))
+    }
+    return(leaflet::colorNumeric(cores, domain = dominio,
+                                 na.color = "transparent"))
+  }
+
+  negative <- rampa_neg(qtt)
+  positive <- rampa_pos(qtt)
+  onlypositive <- rampa_so_positivos(qtt)
   suppressWarnings({
     maximum <- max(values, na.rm = TRUE) * 1.1
     minimum <- min(values, na.rm = TRUE) * 1.1
@@ -875,6 +1439,10 @@ painel_paleta <- function(values, invertida = FALSE) {
       minimum == 0 && maximum == 0) {
     minimum <- -1e-12
     maximum <- 1e-12
+  }
+
+  if (is.infinite(maximum) || is.infinite(minimum)) {
+    return(function(value) rep("transparent", length(value)))
   }
 
   if (minimum < 0 && maximum > 0) {
@@ -892,18 +1460,55 @@ painel_paleta <- function(values, invertida = FALSE) {
     cores <- onlypositive
   }
 
-  if (is.infinite(maximum) || is.infinite(minimum)) {
-    function(value) rep("transparent", length(value))
+  leaflet::colorNumeric(cores, domain = dominio, na.color = "transparent")
+}
+
+#' Normaliza a unidade do numerador vinda do mdata_exts (dataunit_num):
+#' trim, vazio/NA vira NA (colunas texte do DW costumam nascer TBD)
+#' @keywords internal
+painel_unidade_normaliza <- function(x) {
+  x <- trimws(as.character(x))
+  x[is.na(x) | !nzchar(x)] <- NA_character_
+  x
+}
+
+#' Unidade e percentual: so dataunit_num = "%" liga a exibicao x100 (Gini
+#' e indices entre 0 e 1 NAO sao percentual; a decisao vem do metadado,
+#' nunca da faixa de valores)
+#' @keywords internal
+painel_eh_percent <- function(unidade) {
+  if (length(unidade)) isTRUE(unname(painel_unidade_normaliza(
+    unidade[1])) == "%") else FALSE
+}
+
+#' Numeros no padrao pt-BR para rotulos de mapa e legenda. Com unidade
+#' percentual ("%" em dataunit_num) o valor 0..1 e exibido x100 com
+#' sufixo " %" e menos casas significativas
+#' @keywords internal
+painel_num <- function(x, unidade = NULL) {
+  if (painel_eh_percent(unidade)) {
+    txt <- format(x * 100, big.mark = ".", decimal.mark = ",",
+                  scientific = FALSE, trim = TRUE, digits = 4L)
+    paste0(txt, " %")
   } else {
-    leaflet::colorNumeric(cores, domain = dominio, na.color = "transparent")
+    format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE,
+           trim = TRUE, digits = 6)
   }
 }
 
-#' Numeros no padrao pt-BR para rotulos de mapa e legenda
+#' Remove camadas sem dados antes da conversao plotly: o ggplotly crasha
+#' em to_basic (order/list) com camadas de zero linhas — caso real da
+#' localidade escolhida ausente da serie por ano do ramo banda
 #' @keywords internal
-painel_num <- function(x) {
-  format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE,
-         trim = TRUE, digits = 6)
+painel_sem_camadas_vazias <- function(p) {
+  base <- p$data
+  mantem <- vapply(p$layers, function(camada) {
+    d <- camada$data
+    if (is.null(d) || inherits(d, "waiver")) d <- base
+    NROW(d) > 0
+  }, logical(1))
+  p$layers <- p$layers[mantem]
+  p
 }
 
 #' Grafico em destaque da serie da aba Regiao, despachando o tipo por
@@ -1040,6 +1645,21 @@ painel_compostos_cache <- function() {
                    function() painel_com_con(painel_compostos))
 }
 
+#' Fonte de cada indicador, cacheado
+#' @keywords internal
+painel_fontes_cache <- function() {
+  painel_cache_get(painel_cache_chave("fontes"), painel_cache_ttl[["catalogo"]],
+                   function() painel_com_con(painel_fontes))
+}
+
+#' Membros do grupo Resumo, cacheado
+#' @keywords internal
+painel_grupo_resumo_cache <- function() {
+  painel_cache_get(painel_cache_chave("grupo_resumo"),
+                   painel_cache_ttl[["catalogo"]],
+                   function() painel_com_con(painel_grupo_resumo))
+}
+
 #' Geometrias municipais, cacheado
 #' @keywords internal
 painel_geo_mun_cache <- function() {
@@ -1116,6 +1736,78 @@ painel_geo_mun_uf_cache <- function(local_id) {
   malha[malha$code != as.character(local_id), , drop = FALSE]
 }
 
+#' Malha decorativa do globo em torno da localidade em foco: selecao
+#' municipal desenha as bordas dos demais municipios do estado
+#' ([painel_geo_mun_uf_cache()]); selecao submunicipal (setor, bairro,
+#' subdistrito, area de ponderacao — geoloc_id com mais de 10 digitos)
+#' troca as bordas pelas proprias feicoes do nivel (pelo `nivel_tipo` da
+#' localidade) dentro do municipio em foco
+#' ([painel_geo_irmaos_mun()]), que tesselam o municipio inteiro. A feicao
+#' do destaque sai fora do cache (cada selecao exclui a si mesma), como em
+#' [painel_geo_mun_uf_cache()].
+#' @keywords internal
+painel_geo_malha_foco_cache <- function(local_id) {
+  local_id <- suppressWarnings(as.integer(local_id))[1]
+  if (is.na(local_id)) return(painel_geo_vazio())
+  info <- painel_com_con(function(con) DBI::dbGetQuery(con, sprintf(paste(
+    "SELECT g.geoloc_id::text AS codigo, l.nivel_tipo AS nivel_tipo",
+    "FROM local l JOIN geoloc g USING (geoloc_id)",
+    "WHERE l.local_id = %d"),
+    local_id)))
+  codigo <- as.character(info$codigo)[1]
+  nivel_tipo <- as.character(info$nivel_tipo)[1]
+  if (is.na(codigo) || !nzchar(codigo)) return(painel_geo_vazio())
+  if (nchar(codigo) > 10L) {
+    mun <- substr(codigo, 1, 7)
+    tipo <- if (!is.na(nivel_tipo) && nzchar(nivel_tipo)) nivel_tipo else NULL
+    chave_nivel <- if (!is.null(tipo)) tipo else as.character(nchar(codigo))
+    malha <- painel_cache_get(
+      painel_cache_chave(sprintf("geo_irmaos_%s_%s", chave_nivel, mun)),
+      painel_cache_ttl[["geo"]],
+      function() painel_com_con(function(con)
+        painel_geo_irmaos_mun(con, mun = mun, tipo = tipo,
+                              larg = nchar(codigo))))
+    return(malha[malha$code != as.character(local_id), , drop = FALSE])
+  }
+  painel_geo_mun_uf_cache(local_id)
+}
+
+#' Malha completa de um nivel submunicipal dentro de um municipio
+#' (geoloc de 7 digitos), cacheada por municipio — chave derivada da de
+#' [painel_geo_malha_foco_cache()], com o teto no final para nao
+#' conflitar com a malha do globo. O teto e maior que o do globo: o mapa
+#' aguenta malhas de capital inteira (~5 mil setores) com a simplificacao
+#' adaptativa de [painel_geo_irmaos_mun()]
+#' @keywords internal
+painel_geo_irmaos_nivel_cache <- function(mun, tipo = NULL, larg = NULL,
+                                          max_feicoes = 6000L) {
+  mun <- trimws(as.character(mun)[1])
+  if (is.na(mun) || !grepl("^[0-9]{7}$", mun)) return(painel_geo_vazio())
+  tipo <- if (length(tipo) == 1 && !is.na(tipo) && nzchar(tipo)) tipo else NULL
+  chave_nivel <- if (!is.null(tipo)) tipo else
+    suppressWarnings(as.character(as.integer(larg)[1]))
+  if (is.na(chave_nivel)) return(painel_geo_vazio())
+  painel_cache_get(
+    painel_cache_chave(sprintf("geo_irmaos_%s_%s_%d",
+                               chave_nivel, mun, as.integer(max_feicoes))),
+    painel_cache_ttl[["geo"]],
+    function() painel_com_con(function(con)
+      painel_geo_irmaos_mun(con, mun = mun, tipo = tipo, larg = larg,
+                            max_feicoes = max_feicoes)))
+}
+
+#' Contorno do municipio dono de um codigo submunicipal, cacheado
+#' @keywords internal
+painel_geo_municipio_codigo_cache <- function(codigo) {
+  codigo <- trimws(as.character(codigo))[1]
+  if (is.na(codigo) || !grepl("^[0-9]{7}$", codigo)) return(painel_geo_vazio())
+  painel_cache_get(
+    painel_cache_chave(sprintf("geo_municipio_%s", codigo)),
+    painel_cache_ttl[["geo"]],
+    function() painel_com_con(function(con)
+      painel_geo_municipio_codigo(con, codigo)))
+}
+
 #' UFs com dados num nivel, cacheado
 #' @keywords internal
 painel_ufs_com_dados_cache <- function(mdata_id, nivel_id) {
@@ -1133,12 +1825,12 @@ painel_ufs_com_dados_cache <- function(mdata_id, nivel_id) {
 #' @keywords internal
 painel_local_top_uf_cache <- function(mdata_id, nivel_id, uf_local_id) {
   mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
-  nivel_id <- suppressWarnings(as.integer(nivel_id))[1]
+  p <- painel_nivel_parse(nivel_id)
   uf_local_id <- suppressWarnings(as.integer(uf_local_id))[1]
-  if (is.na(mdata_id) || is.na(nivel_id) || is.na(uf_local_id)) return(NULL)
+  if (is.na(mdata_id) || is.na(p$nivel) || is.na(uf_local_id)) return(NULL)
   painel_cache_get(
-    painel_cache_chave(sprintf("local_top_uf_%d_%d_%d",
-                               mdata_id, nivel_id, uf_local_id)),
+    painel_cache_chave(sprintf("local_top_uf_%d_%s_%d",
+                               mdata_id, p$chave, uf_local_id)),
     painel_cache_ttl[["catalogo"]],
     function() painel_com_con(function(con)
       painel_local_top_uf(con, mdata_id, nivel_id, uf_local_id)))
@@ -1179,6 +1871,60 @@ painel_locais_com_dados_cache <- function(mdata_id, nivel_id) {
     painel_cache_ttl[["catalogo"]],
     function() painel_com_con(function(con)
       painel_locais_com_dados(con, mdata_id, nivel_id)))
+}
+
+#' Nivel territorial de um indicador, cacheado
+#' @keywords internal
+painel_ind_nivel_cache <- function(mdata_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  if (is.na(mdata_id)) return(NA_character_)
+  painel_cache_get(
+    painel_cache_chave(sprintf("ind_nivel_%d", mdata_id)),
+    painel_cache_ttl[["catalogo"]],
+    function() painel_com_con(function(con) painel_ind_nivel(con, mdata_id)))
+}
+
+#' Municipios com feicoes de um nivel submunicipal de um indicador,
+#' cacheado
+#' @keywords internal
+painel_muns_nivel_dados_cache <- function(mdata_id, nivel_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  p <- painel_nivel_parse(nivel_id)
+  if (is.na(mdata_id) || is.na(p$nivel))
+    return(data.frame(municipio = character(0), n_locais = integer(0)))
+  painel_cache_get(
+    painel_cache_chave(sprintf("muns_nivel_dados_%d_%s", mdata_id, p$chave)),
+    painel_cache_ttl[["catalogo"]],
+    function() painel_com_con(function(con)
+      painel_muns_nivel_dados(con, mdata_id, nivel_id)))
+}
+
+#' Indicador tem dados no nivel territorial? Niveis pesados (malha acima
+#' do limite do globo) consultam por UF; leves, por localidade — mesma
+#' regra de disponibilidade do globo de localidades
+#' @keywords internal
+painel_ind_tem_dados <- function(mdata_id, nivel_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  if (is.na(mdata_id)) return(FALSE)
+  if (nrow(painel_geo_nivel_cache(nivel_id))) {
+    length(painel_locais_com_dados_cache(mdata_id, nivel_id)) > 0
+  } else {
+    length(painel_ufs_com_dados_cache(mdata_id, nivel_id)) > 0
+  }
+}
+
+#' Primeiro indicador visivel do catalogo com dados no nivel territorial:
+#' destino da troca automatica quando o indicador corrente fica sem dados
+#' ao mudar de nivel
+#' @keywords internal
+painel_indicador_com_dados <- function(md, nivel_id) {
+  if (is.null(md) || !NROW(md) || !"mdata_id" %in% names(md)) return(NA_integer_)
+  cand <- md$mdata_id
+  if ("visivel" %in% names(md))
+    cand <- cand[is.na(md$visivel) | md$visivel]
+  for (id in cand) if (painel_ind_tem_dados(id, nivel_id))
+    return(as.integer(id))
+  NA_integer_
 }
 
 #' Serie de um indicador em uma localidade, cacheado
@@ -1222,6 +1968,36 @@ painel_anos_cache <- function(mdata_id) {
     function() painel_com_con(function(con) painel_anos(con, mdata_id)))
 }
 
+#' Refdates distintos de um indicador, cacheados
+#' @keywords internal
+painel_refdates_cache <- function(mdata_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  if (is.na(mdata_id)) {
+    return(data.frame(refdate = as.Date(character(0))))
+  }
+  painel_cache_get(
+    painel_cache_chave(sprintf("refdates_%d", mdata_id)),
+    painel_cache_ttl[["valores"]],
+    function() painel_com_con(function(con) painel_refdates(con, mdata_id)))
+}
+
+#' Valores por refdate exato, cacheados (slider por data do mapa)
+#' @keywords internal
+painel_valores_refdate_cache <- function(mdata_id, refdate) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  refdate <- as.Date(refdate)[1]
+  if (is.na(mdata_id) || is.na(refdate)) {
+    return(data.frame(local_id = integer(0), refdate = as.Date(character(0)),
+                      value = numeric(0)))
+  }
+  painel_cache_get(
+    painel_cache_chave(sprintf("valores_refdate_%d_%s", mdata_id,
+                               format(refdate, "%Y%m%d"))),
+    painel_cache_ttl[["valores"]],
+    function() painel_com_con(function(con)
+      painel_valores_refdate(con, mdata_id, refdate)))
+}
+
 #' Serie completa reduzida a 1 observacao por localidade x ano, cacheada
 #' (cache achatado: uma chave por indicador em vez de uma por ano — o mapa
 #' animado e a aba Baixar pagariam a regeneracao a cada ano do slider)
@@ -1239,6 +2015,23 @@ painel_valores_por_ano_cache <- function(mdata_id) {
       painel_valores_por_ano(con, mdata_id)))
 }
 
+#' Serie completa com todas as observacoes (localidade x refdate),
+#' cacheada: uma chave por indicador, base do explorar e do recorte por
+#' data da aba Baixar
+#' @keywords internal
+painel_valores_por_data_cache <- function(mdata_id) {
+  mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
+  if (is.na(mdata_id)) {
+    return(data.frame(local_id = integer(0), refdate = as.Date(character(0)),
+                      value = numeric(0), ano = integer(0)))
+  }
+  painel_cache_get(
+    painel_cache_chave(sprintf("valores_por_data_%d", mdata_id)),
+    painel_cache_ttl[["valores"]],
+    function() painel_com_con(function(con)
+      painel_valores_por_data(con, mdata_id)))
+}
+
 #' Valores do ultimo refdate por localidade num ano: fatia do cache
 #' achatado [painel_valores_por_ano_cache()] com a assinatura historica
 #' (mapa, baixar e ranking seguem sem mudanca de chamada)
@@ -1253,18 +2046,24 @@ painel_valores_ano_cache <- function(mdata_id, ano) {
   painel_filtrar_ano(painel_valores_por_ano_cache(mdata_id), ano)
 }
 
-#' Ranking de uma localidade num indicador e ano, cacheado
+#' Ranking de uma localidade num indicador e data, cacheado: com `refdate`
+#' valido, ranking no dia exato; sem `refdate`, no ultimo refdate do ano
+#' (contrato historico)
 #' @keywords internal
-painel_ranking_local_cache <- function(mdata_id, local_id, ano) {
+painel_ranking_local_cache <- function(mdata_id, local_id, ano,
+                                       refdate = NULL) {
   mdata_id <- suppressWarnings(as.integer(mdata_id))[1]
   local_id <- suppressWarnings(as.integer(local_id))[1]
   ano <- suppressWarnings(as.integer(ano))[1]
+  refdate <- as.Date(refdate)[1]
   if (is.na(mdata_id) || is.na(local_id) || is.na(ano)) {
     return(painel_ranking_vazio())
   }
   painel_cache_get(
-    painel_cache_chave(sprintf("ranking_%d_%d_%d", mdata_id, local_id, ano)),
+    painel_cache_chave(sprintf("ranking_%d_%d_%d_%s", mdata_id, local_id,
+                               ano, if (!is.na(refdate))
+                                 format(refdate, "%Y%m%d") else "ano")),
     painel_cache_ttl[["valores"]],
     function() painel_com_con(function(con)
-      painel_ranking_local(con, mdata_id, local_id, ano)))
+      painel_ranking_local(con, mdata_id, local_id, ano, refdate)))
 }

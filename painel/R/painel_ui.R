@@ -68,7 +68,7 @@ painel_opcoes_select <- function(placeholder, max_options = 10000L) {
 #' (mesma resolução local-primeiro de [painel_marca_src()]).
 #'
 #' @keywords internal
-painel_recursos <- function(assets_dir, paleta = c("govbr", "pb")) {
+painel_recursos <- function(assets_dir, paleta = c("govbr", "pb", "brasil")) {
   paleta <- match.arg(paleta)
   tema_fonte <- function(arq) {
     local <- file.path(assets_dir, arq)

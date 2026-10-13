@@ -4,10 +4,10 @@
 #'   labourvaluesdatapanel, em dois recortes: (1) todos os indicadores de uma
 #'   regiao — escolha o nivel territorial e a localidade e receba uma planilha
 #'   com uma linha por indicador e uma coluna por ano; (2) um indicador por
-#'   ano — escolha o indicador e o nivel territorial e receba uma planilha
-#'   com uma aba por ano, cada uma com todas as localidades daquele nivel com
-#'   dados no ano (no nivel municipal, o codigo da localidade e o codigo
-#'   IBGE de 7 digitos).
+#'   data — escolha o indicador e o nivel territorial e receba uma planilha
+#'   com uma aba por data de referencia, cada uma com todas as localidades
+#'   daquele nivel com dados na data (no nivel municipal, o codigo da
+#'   localidade e o codigo IBGE de 7 digitos).
 #'
 #' @param id,input,output,session Internal parameters for {shiny}.
 #'
@@ -40,7 +40,7 @@ mod_panel_baixar_ui <- function(id) {
           "localidade escolhida. Aba “metadados”: ficha dos indicadores",
           "incluídos.")),
       tags$div(class = "painel-card",
-        tags$h3("Um indicador, uma aba por ano"),
+        tags$h3("Um indicador, uma aba por data"),
         tags$div(class = "form-group",
           tags$label(`for` = ns("indicador"), "Indicador"),
           shiny::selectizeInput(ns("indicador"), NULL, choices = NULL,
@@ -56,9 +56,10 @@ mod_panel_baixar_ui <- function(id) {
         shiny::downloadButton(ns("baixar_indicador"), "Baixar planilha",
                               class = "btn-primary"),
         tags$p(class = "painel-nota",
-          "Uma aba por ano, cada uma com todas as localidades do nível",
-          "territorial com dados naquele ano (código do IBGE no nível",
-          "municipal, nome e valor da última observação do ano). Aba",
+          "Uma aba por data de referência, cada uma com todas as",
+          "localidades do nível territorial com dados naquela data",
+          "(código do IBGE no nível municipal, nome e valor do",
+          "refdate exato, na régua do slider por data do mapa). Aba",
           "“metadados”: contexto da planilha.")))
   )
 }
@@ -132,7 +133,7 @@ mod_panel_baixar_server <- function(id) {
                            nivel_rotulo = rotulo_nivel_regiao())
       })
 
-    # --- recorte 2: um indicador, uma aba por ano -------------------------
+    # --- recorte 2: um indicador, uma aba por data ------------------------
     rotulo_indicador <- shiny::reactive({
       i <- match(suppressWarnings(as.integer(input$indicador)), md$mdata_id)
       if (!length(i) || is.na(i)) "—" else md$rotulo[i]
@@ -157,20 +158,23 @@ mod_panel_baixar_server <- function(id) {
       content = function(arquivo) {
         indicador <- suppressWarnings(as.integer(input$indicador))[1]
         locais <- painel_locais_nivel_cache(input$nivel_ano)
-        por_ano <- list()
+        por_data <- list()
         if (!is.na(indicador)) {
           ids <- unlist(locais, use.names = FALSE)
-          anos <- painel_anos_cache(indicador)$ano
-          por_ano <- lapply(anos, function(ano) {
-            v <- painel_valores_ano_cache(indicador, ano)
+          refdates <- painel_refdates_cache(indicador)$refdate
+          por_data <- lapply(refdates, function(d) {
+            v <- painel_valores_refdate_cache(indicador, d)
             v[v$local_id %in% ids, , drop = FALSE]
           })
-          names(por_ano) <- as.character(anos)
+          names(por_data) <- painel_rotulo_aba(refdates)
         }
-        painel_xlsx_indicador(arquivo, por_ano = por_ano, locais = locais,
+        unidade_ind <- if (is.null(md$unidade)) NULL else
+          md$unidade[match(indicador, md$mdata_id)]
+        painel_xlsx_indicador(arquivo, por_data = por_data, locais = locais,
                               rotulo_indicador = rotulo_indicador(),
                               nivel_rotulo = rotulo_nivel_ano(),
-                              codigos = painel_codigo_mun_cache())
+                              codigos = painel_codigo_mun_cache(),
+                              unidade = unidade_ind)
       })
   })
 }
