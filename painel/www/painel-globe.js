@@ -72,8 +72,15 @@
     };
   }
 
+  // A geometria viaja na mensagem como objeto JSON (a classe "json" do
+  // jsonlite e embutida verbatim pelo serializer do Shiny, force=TRUE) ou
+  // como string GeoJSON: as duas formas sao aceitas.
+  function parseGeojson(dado) {
+    return typeof dado === "string" ? JSON.parse(dado) : dado;
+  }
+
   function geometry(message) {
-    const collection = JSON.parse(message.geojson);
+    const collection = parseGeojson(message.geojson);
     if (!collection || !Array.isArray(collection.features) || !collection.features.length) {
       throw new Error("Geometria das localidades ausente");
     }
@@ -85,9 +92,9 @@
     }));
   }
 
-  // Uma feicao unica (destaque ou contexto) vinda de string GeoJSON.
+  // Uma feicao unica (destaque ou contexto) vinda do GeoJSON da mensagem.
   function parseGeojsonFeature(text) {
-    const collection = JSON.parse(text);
+    const collection = parseGeojson(text);
     const feature = collection && Array.isArray(collection.features) &&
       collection.features.length ? collection.features[0] : null;
     if (!feature) return null;
@@ -101,10 +108,10 @@
     };
   }
 
-  // Feicoes cruas de uma string GeoJSON — a malha municipal decorativa
+  // Feicoes cruas do GeoJSON da mensagem: a malha decorativa
   // (so bordas) dispensa code/label/center.
   function parseGeojsonFeatures(text) {
-    const collection = JSON.parse(text);
+    const collection = parseGeojson(text);
     if (!collection || !Array.isArray(collection.features)) return [];
     return collection.features.filter(feature => feature && feature.geometry);
   }
@@ -611,17 +618,20 @@
       if (message.readyId) state.readyId = String(message.readyId);
       state.modo = String(message.modo || "uf");
       if (message.geojson) {
-        // Troca de nivel territorial: substitui as feicoes da base.
+        // Troca de nivel territorial: substitui as feicoes da base. So
+        // marca carregado (e a contagem de feicoes) quando o parse deu
+        // certo; antes, um geojson rejeitado virava "carregado com zero
+        // feicoes" e o globo ficava uma esfera vazia sem sinal de erro.
         try {
           state.features = geometry(message);
-        } catch (error) { /* mantem as feicoes atuais */ }
-        if (!state.loaded) {
-          state.loaded = true;
-          host.dataset.ready = "true";
+          if (!state.loaded) {
+            state.loaded = true;
+            host.dataset.ready = "true";
+            host.setAttribute("aria-busy", "false");
+            resize();
+          }
           host.dataset.featureCount = String(state.features.length);
-          host.setAttribute("aria-busy", "false");
-          resize();
-        }
+        } catch (error) { /* mantem as feicoes atuais */ }
       }
       const entries = Array.isArray(message.locais) ? message.locais :
         Array.isArray(message.ufs) ? message.ufs : [];

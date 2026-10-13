@@ -1,6 +1,6 @@
 {
   "gerador": "beep::deploy_panel",
-  "versao_beep": "0.9.3.9035",
+  "versao_beep": "0.9.3.9036",
   "data": "2026-10-13",
   "titulo": "Painel Eleições",
   "paleta": "brasil",
@@ -27,7 +27,7 @@
       "sha256": "ef481b5de6dfd89c209855034633c8ff2bd719b9ba4d135598cf43dc87a69b6c"
     },
     "R/painel_dw.R": {
-      "sha256": "8e7f88e14ce12e7a0d1903c62a8954210b0edcc5ce9784ccdf30e1372f5b7172"
+      "sha256": "bc6984c5636d2c85b337f767c796ffbcc174e874405833c7e722f2ec054d39f5"
     },
     "R/painel_xlsx.R": {
       "sha256": "3a954eb80754a98e0f92f72ef7d73dad26781e5d264d65f85fdc8bf47bba4881"
@@ -57,7 +57,7 @@
       "sha256": "fb636c68736b40b30a866f0c9a3ff751360dec1a1e146aa5987863f8b8ad88b9"
     },
     "www/painel-globe.js": {
-      "sha256": "cafc47f230c9b9e6c6a9412a3d1cdfa830199d288fb8f32a72fab00399991c20"
+      "sha256": "3c49d0b855a4efd97adec00b70627196bb243aa102436a06c8c9691d30b91155"
     },
     "www/painel-map-controls.js": {
       "sha256": "4e522edf8514de67e7228e38d9fff75d77575b70938a47a4bd8edf5e7648c4d8"
