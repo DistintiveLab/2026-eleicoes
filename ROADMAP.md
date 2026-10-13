@@ -2,7 +2,7 @@
 
 Projeto: painel analítico das Eleições 2026 centrado em R, com banco de dados **`eleicoes`**, cobrindo votos por candidato/partido, votos nulos e brancos, abstenção acima de 25% por seção eleitoral, gastos de campanha e cruzamento com perfis sociodemográficos do **Censo 2022 IBGE** (microdados e agregados por bairro/setor censitário).
 
-**Contexto temporal (verificado em 05/10/2026):** o 1º turno ocorreu em 04/10/2026; o 2º turno (onde houver) é em 25/10/2026. Já há **10 séries 2026** no portal de dados abertos do TSE (tag "Ano 2026", ver §3.1), incluindo eleitorado por seção, candidaturas, prestação de contas e pesquisas eleitorais. Falta apenas a série de **resultados por seção** (`resultados-2026`, padrão de 2022/2024), esperada nos dias seguintes à apuração.
+**Contexto temporal (verificado em 05/10/2026):** o 1º turno ocorreu em 04/10/2026; o 2º turno (onde houver) é em 25/10/2026. Já há **10 séries 2026** no portal de dados abertos do TSE (tag "Ano 2026", ver §3.1), incluindo eleitorado por seção, candidaturas, prestação de contas e pesquisas eleitorais. **Atualização 12/10/2026: `resultados-2026` foi publicado** (06–08/10), incluindo `votacao_secao_2026_{UF}.zip` e `detalhe_votacao_secao_2026.zip` — ver §3.1 e o roadmap de indicadores de virada (`docs/roadmap-indicadores-virada-2t.md`).
 
 **Piloto definido (05/10/2026) — Distrito Federal, 2º turno em 25/10:**
 
@@ -16,6 +16,7 @@ Projeto: painel analítico das Eleições 2026 centrado em R, com banco de dados
   - **D3 — coattails federais:** desempenho do arco aliado em dep. federal (PT/PSOL/PV) vs. presidência por local de votação.
   - **D4 — mobilização:** abstenção > 25% e nulos/brancos cruzados com perfil Censo 2022 (idade, renda, cor/raça) — eleitorado potencial não capturado.
   - **D5 — swing 1ºT → 2ºT** (pós-25/10): variação por local de votação entre turnos.
+- **Roadmap dedicado de indicadores e visualização do 2ºT** (12/10/2026): operacionalização de D0–D5 em indicadores V1–V5 + índice IPV, referências visuais e PDAD-A 2024 — ver **`docs/roadmap-indicadores-virada-2t.md`**.
 - **Dissonâncias estruturais a modelar:** PSB aliado formal de Lula (vice Alckmin) mas com candidatura própria ao governo do DF (Cappelli, 2,23%); PDT aliado nas duas esferas; PL elegeu as 2 senadoras (Michelle Bolsonaro, Bia Kicis) e 3 dos 8 dep. federais do DF.
 
 ---
@@ -70,9 +71,9 @@ Os 10 datasets com tag "Ano 2026" (verificados em 05/10/2026 via `package_search
 | `mesarias-mesarios-e-funcoes-especiais-2026` | mesárias/mesários por seção | operação logística (opcional) |
 | `denuncias-eleitorais` | denúncias eleitorais 2026 | fiscalização (opcional) |
 
-**Ainda não publicado:** `resultados-2026` (votação por seção) — `package_show?id=resultados-2026` retorna 404 e ele não aparece na tag "Ano 2026". Pelo padrão 2022/2024, trará `detalhe_votacao_secao_2026.zip` (zip nacional) e/ou `votacao_secao_2026_{UF}.zip` (por UF) — em 2022 existem ambos — mais o dataset irmão `resultados-2026-boletim-de-urna`. É essa a série que alimenta votos, nulos/brancos e abstenções por seção.
+- **`resultados-2026` publicado em 12/10/2026** (dataset criado 06–08/10): `votacao_secao_2026_{UF,BR}.zip` (votação nominal por seção), `detalhe_votacao_secao_2026.zip` (aptos/comparecimento/abstenções/brancos/nulos por seção), `detalhe_votacao_munzona_2026.zip` e relatórios de totalização por UF. É essa a série que alimenta votos, nulos/brancos e abstenções por seção — via bulk, sem boletins de urna.
 
-> Enquanto `resultados-2026` não sai, desenvolver todo o pipeline com **`detalhe_votacao_secao_2022.zip`** + **`votacao_secao_2022_{UF}.zip`** (e 2024 municipais, se útil) — o schema é homogêneo entre anos (com renomeações pontuais de colunas).
+> O schema de `votacao_secao`/`detalhe_votacao_secao` é homogêneo entre anos (com renomeações pontuais de colunas) — usar os zips de **2022** como referência de conformação ao pluguar os de 2026 (agora disponíveis, §3.1) e nas séries históricas.
 
 ### 3.2 IBGE — Censo 2022
 
@@ -239,7 +240,7 @@ agg_setor_censo    (indicadores por setor + rendimento responsável)
 - **Perfil do eleitorado TSE**: categoria de faixa etária "Inválida" existe (irrelevante em volume); escolaridade tem 9 níveis — bucketizar conforme script.
 - **Códigos de município TSE ≠ IBGE**: o join territorial exige tabela de correspondência (por nome normalizado + UF, com revisão dos empates). Nunca cruzar pelo nome cru.
 - **Nomes de colunas mudam entre anos** nos arquivos TSE — conformar por posição semântica + dicionário próprio, não por nome.
-- **`resultados-2026` (votação por seção) não publicado ainda** (05/10/2026): monitorar via `package_search?fq=tags:%22Ano+2026%22` — o `package_list` está com cache desatualizado (omitia datasets criados em 03–04/10/2026), e a página HTML do TSE dá 403 para bots. Enquanto isso, boletins de urna via §3.6a.
+- **`resultados-2026` já publicado** (verificado 12/10/2026, §3.1): caminho bulk disponível para votação e abstenção por seção do 1ºT. Boletins de urna (§3.6a) deixam de ser necessários; reter para auditoria/2ºT antecipado.
 - **Endpoint de boletins (`resultados.tse.jus.br`)**: manter ≤85 req/s (bloqueio de ~10 min acima de ~100); validar por urna: Σ votos = comparecimento e aptos ≥ comparecimento.
 - **`{ckanr}` em manutenção ativa** (retomada 2026, último commit set/2026): usar como cliente primário; se algum endpoint/parâmetro falhar no pacote, cair para chamada direta `{httr2}` + `{jsonlite}`.
 - **`{beepr}` toca na sessão R (servidor), não no navegador** — para alerta sonoro em painel web, embutir `<audio>` e disparar via JS/custom message em Shiny.
