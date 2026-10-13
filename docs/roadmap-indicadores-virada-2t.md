@@ -1,6 +1,6 @@
 # Roadmap de indicadores e visualização — Virada de votos no 2º turno (Lula × Flávio; Grass × Celina)
 
-**Data:** 12/10/2026 · **2º turno:** 25/10/2026 · **MVP no ar:** quinta 15/10 · **Escopo piloto:** DF (33 RAs, 7.050 seções, 2.253.132 eleitores)
+**Data:** 12/10/2026 · **2º turno:** 25/10/2026 · **MVP no ar:** quinta 15/10 · **Escopo piloto:** DF (33 RAs, 7.050 seções no cadastro, 6.969 com voto, 2.253.132 eleitores)
 **Janela de decisão:** tudo o que não estiver no painel até 15/10 (MVP) não muda a campanha — priorizar o que é computável com os dados já disponíveis.
 
 Este documento ordena o pedido da sessão de 12/10: (a) passar dos indicadores de inventário (brancos/nulos/abstenção, em absoluto ou proporção) para **indicadores de alvo acionável** — onde ir, com quem falar, o que pedir; (b) aproveitar cruzamentos sociodemográficos do Censo (e em breve da PDAD-A 2024) para priorizar; (c) inspirar a camada visual em iniciativas equivalentes.
@@ -16,7 +16,7 @@ Verificado hoje no CKAN do TSE (`package_show?id=resultados-2026`, dataset criad
 | `cdn.tse.jus.br/estatistica/sead/odsele/votacao_secao/votacao_secao_2026_DF.zip` | votação nominal por seção, 1º turno | base de todos os indicadores V1–V5 |
 | `.../detalhe_votacao_secao/detalhe_votacao_secao_2026.zip` | aptos/comparecimento/abstenções/brancos/nulos por seção | teto de virada, excesso de abstenção |
 | `.../detalhe_votacao_munzona/detalhe_votacao_munzona_2026.zip` | agregados município/zona | validação de totais |
-| `.../relatorio_resultado_totalizacao/Relatorio_Resultado_Totalizacao_2026_DF.zip` | relatório oficial DF | conferência (Lula 45,16 × Flávio 47,03; Grass 34,47 × Celina 49,93) |
+| `.../relatorio_resultado_totalizacao/Relatorio_Resultado_Totalizacao_2026_DF.zip` | relatório oficial DF | conferência (ver §5a: números reais validados contra munzona) |
 
 Combinar com o que já temos no projeto: `perfil_eleitor_secao_2026_DF` (sexo/idade/escolaridade **por seção** — ouro para cruzamento sociodemográfico), `eleitorado_local_votacao_2026` (lat/lon por seção), `data/locais_votacao_ra_df.csv` (match 100% seção→RA), `data-raw/partidos_arco_2026.csv` (arcos), Censo por RA (`data/perfil_ra_df.csv`) e por setor.
 
@@ -153,7 +153,7 @@ Componente novo `painel/R/mod_panel_virada.R` + JS no padrão `painel-map.js`:
 
 | # | Tarefa | Entradas | Saída | Prazo |
 |---|---|---|---|---|
-| T0 | Ingestão `votacao_secao_2026_DF` + `perfil_eleitor_secao_2026_DF`; validar totais contra `Relatorio_Resultado_Totalizacao_2026_DF` (aptos 2.253.132; Lula 45,16/Flávio 47,03; Grass 34,47/Celina 49,93); aptos/abstenção por seção via `locais_votacao_ra_df.csv` + Σ votos | CDN TSE | tabelas conformadas | seg 12/10 |
+| T0 | Ingestão `votacao_secao_2026_DF` + `perfil_eleitor_secao_2026_DF`; validar totais contra `detalhe_votacao_munzona_2026` (✅ concluído 12/10: comparecimento/brancos/nulos batem exato; válidos nominais +10.299 = anulados sub judice; números reais do 1ºT DF: **Flávio 51,31% × Lula 38,11%** (presidência) e **Celina 49,68% × Grass 34,30%** (governo, base nominal); aptos oficiais 2.243.988, abstenção 19,0%; presidente exige o arquivo nacional `votacao_secao_2026_BR.zip` filtrado por SG_UF=DF — o per-UF só traz a eleição estadual); aptos/abstenção por seção via `locais_votacao_ra_df.csv` + Σ votos | CDN TSE | tabelas conformadas | seg 12/10 |
 | T1 | Unidade "local de votação" (urnas por ponto, §3.6d) + pareamento 2022↔2026 de locais (4 etapas tatipara) com taxa de match reportada | T0 + `votacao_secao_2022_DF` + `eleitorado_local_votacao_2022.zip` (cache) | `virada_locais.csv` | seg–ter 12–13/10 |
 | T2 | **V1 + V2** por local e por RA (presidência e governo), cenários p | T1 | `virada_local.csv` | ter 13/10 |
 | T3 | **V4 + V5**: excesso de abstenção, saldo, terreno perdido, votos a recuperar | T2 + Censo RA | idem | ter 13/10 |
