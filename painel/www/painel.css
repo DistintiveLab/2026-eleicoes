@@ -442,3 +442,77 @@ h3 { font-size: 19px; }
 @media (max-width: 900px) {
   .painel-virada-grade { grid-template-columns: 1fr; }
 }
+
+/* Tutorial visual da aba Virada (painel-virada-tour.js): o alvo ganha um
+ * box-shadow gigante que escurece o resto da tela (spotlight) e o cartão
+ * de descrição fica fixo perto do alvo; no celular vira bottom sheet. */
+.painel-tour-veu {
+  position: fixed; inset: 0; z-index: 2200;
+}
+.painel-tour-card {
+  position: fixed; z-index: 2400; max-width: 400px;
+  background: var(--p-papel); border: 1px solid var(--p-linha);
+  border-radius: 12px; padding: 16px 18px 14px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, .3);
+  font-family: var(--painel-font); outline: none;
+}
+.painel-tour-card h4 { margin: 0 0 6px; font-size: 15px; color: var(--p-tinta); }
+.painel-tour-card p { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--p-texto); }
+.painel-tour-fechar {
+  position: absolute; top: 6px; right: 8px; min-height: 34px; min-width: 34px;
+  border: 0; background: none; font-size: 20px; line-height: 1;
+  color: var(--p-mudo); cursor: pointer; padding: 4px;
+}
+.painel-tour-fechar:hover { color: var(--p-tinta); }
+.painel-tour-rodape {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-top: 14px;
+}
+.painel-tour-passos { font-size: 12px; color: var(--p-mudo); }
+.painel-tour-btns { display: flex; gap: 8px; }
+.painel-tour-card .btn { min-height: 36px; padding: 6px 14px; font-size: 13px; }
+.painel-tour-alvo {
+  z-index: 2300; border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(13, 22, 33, .6);
+  outline: 2px solid var(--p-realce); outline-offset: 3px;
+}
+.painel-tour-alvo:not(.painel-toolbar):not(.painel-tour-card) { position: relative; }
+
+/* Aba Virada em telas estreitas: filtros em grade de 2 colunas com label
+ * acima e dropdown de largura cheia (o valor selecionado deixava de ser
+ * cortado), barra deixa de ser sticky e os boxes encolhem para o swipe. */
+@media (max-width: 900px) {
+  .painel-virada-toolbar {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+  }
+  .painel-virada-toolbar .form-group {
+    flex-direction: column; align-items: stretch; gap: 4px;
+    width: auto; flex-basis: auto; min-width: 0;
+  }
+  .painel-virada-toolbar .form-group .shiny-input-container { width: 100% !important; }
+  .painel-virada-toolbar .selectize-control,
+  .painel-virada-toolbar .selectize-input { width: 100%; }
+  .painel-virada-toolbar .selectize-input > .item {
+    white-space: normal; line-height: 1.35; padding-right: 20px;
+    max-width: 100%;
+  }
+  .painel-virada-toolbar .selectize-input > input { min-width: 4px; }
+  .painel-virada-tour-btn { align-self: end; justify-self: end; }
+  .painel-virada-card-mapa .html-widget-output,
+  .painel-virada-card-mapa .leaflet.html-widget,
+  .painel-virada-card-mapa .leaflet.html-widget .leaflet-container {
+    height: clamp(300px, 68vw, 430px) !important;
+  }
+}
+@media (max-width: 767px) {
+  .painel-tour-card {
+    top: auto !important; left: 12px !important; right: 12px !important;
+    bottom: 12px; transform: none !important; max-width: none;
+  }
+  .painel-virada-grade .painel-card,
+  .painel-virada-ficha { padding: 14px 14px 16px; }
+  .painel-virada-tour-btn { justify-self: stretch; }
+}

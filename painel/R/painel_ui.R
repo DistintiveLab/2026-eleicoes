@@ -88,7 +88,7 @@ painel_recursos <- function(assets_dir, paleta = c("govbr", "pb", "brasil")) {
     htmltools::includeCSS(file.path(assets_dir, "painel.css")),
     htmltools::includeScript(file.path(assets_dir, "painel.js")),
     lapply(c("painel-geo.js", "painel-map.js", "painel-map-controls.js",
-             "painel-globe.js"),
+             "painel-globe.js", "painel-virada-tour.js"),
            \(arq) htmltools::includeScript(file.path(assets_dir, arq))),
     shinyGovBRstyle::use_govbr(),
     shiny::tags$div(id = "beep_tema_raiz", `data-paleta` = paleta,
