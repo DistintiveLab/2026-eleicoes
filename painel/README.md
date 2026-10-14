@@ -1,7 +1,7 @@
 # Painel Eleições
 
 Esqueleto de painel de indicadores gerado por `beep::deploy_panel()`
-(beep 0.9.3.9030, 2026-10-12). **Este projeto é dono deste código** —
+(beep 0.9.3.9036, 2026-10-13). **Este projeto é dono deste código** —
 adaptar, criar e mudar elementos é o esperado:
 
 | Arquivo | Papel |

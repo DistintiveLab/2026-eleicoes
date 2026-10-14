@@ -141,7 +141,7 @@ virada_classe_cor <- c(
 
 virada_int <- function(x) {
   x <- round(x)
-  formatC(x, big.mark = ".", format = "d")
+  formatC(x, big.mark = ".", decimal.mark = ",", format = "d")
 }
 
 virada_pct <- function(x, digito = 1) {
@@ -156,7 +156,7 @@ virada_pp <- function(x, digito = 1) {
 
 virada_real <- function(x) {
   ifelse(is.na(x), "s/d",
-    paste0("R$ ", formatC(round(x), big.mark = ".", format = "d")))
+    paste0("R$ ", formatC(round(x), big.mark = ".", decimal.mark = ",", format = "d")))
 }
 
 virada_chip <- function(rotulo, valor, nota = NULL) {
@@ -460,7 +460,7 @@ mod_panel_virada_server <- function(id) {
           nrow(ra_tabela()))
       } else {
         sprintf("%d locais com %s+ aptos (%d eleitores aptos); bolha = teto de virada, cor = situação no cenário %s.",
-          nrow(d), format(input$min_aptos, big.mark = "."),
+          nrow(d), format(input$min_aptos, big.mark = ".", decimal.mark = ","),
           sum(d$aptos), if (identical(cen(), "p60")) "p = 0,6" else "p = 0,5")
       }
     })

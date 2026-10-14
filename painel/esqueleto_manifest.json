@@ -6,10 +6,10 @@
   "paleta": "brasil",
   "arquivos": {
     "app.R": {
-      "sha256": "16a0b7fb58461c9ee71a9c6c4c39320ed1176a9bb1e4877ad1c3e939adfcec05"
+      "sha256": "dae6a91c25836b60f35ee5b5f8e292660da35e287619b276fda23da4386e40e3"
     },
     "README.md": {
-      "sha256": "f619d3c47b23631ac687493631a369b0b74d2fb6325d6f1e104bf8cc69e575a3"
+      "sha256": "29271adc324f6eadd8b20d777f71224eceba4ccd061015e5ffe160ab954c1161"
     },
     "R/app_ui.R": {
       "sha256": "8b2ec97d639f6504f74f25c63cd58710722281806bf65122623c2b4831969dfe"
@@ -75,7 +75,7 @@
       "sha256": "66c443d705ab686f4a9b2f971f11f23fa4ca33958f3e3fb2044d8117836cf94c"
     },
     "www/beep-tema.css": {
-      "sha256": "ad5dc132f368f918fa9c0485d3d704483b6a14bebc1ef7c16136758fecdef622"
+      "sha256": "d0e93ff6c6c19d073887779776959737191a3f3f073d013570b2e65665d3a89d"
     },
     "www/beep-tema.js": {
       "sha256": "fc1dce5576f2f646e09ed60f8595621112984c43eaf8adf3e9ef98df36e82402"

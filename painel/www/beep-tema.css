@@ -29,10 +29,11 @@ body.beep-pb {
 }
 
 /* Paleta Brasil: fundo branco dominante, vermelho protagonista
-   (tinta/destaque), amarelo-bandeira no realce. Verde/azul ficam
-   disponiveis para graficos via --p-extra-verde/--p-extra-azul. */
+   (destaque), amarelo-bandeira no realce e laranja-queimado na tinta
+   para os titulos não disputarem com o vermelho das acoes. Verde/azul
+   ficam disponiveis para graficos via --p-extra-verde/--p-extra-azul. */
 body.beep-brasil {
-  --p-tinta: #C8102E;          /* vermelho bandeira/protagonista */
+  --p-tinta: #B35400;          /* laranja-queimado escuro */
   --p-destaque: #C8102E;
   --p-destaque-hover: #970F20;
   --p-realce: #FFDF00;         /* amarelo-bandeira */

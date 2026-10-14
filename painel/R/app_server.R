@@ -2,6 +2,7 @@
 # aba nova, crie R/mod_nova.R e chame mod_nova_server("nova_1") aqui.
 
 app_server <- function(input, output, session) {
+  session$allowReconnect("force")
   paleta_ativa <- shiny::reactive({
     if (identical(input$painel_paleta_ativa, "pb")) "pb" else "govbr"
   })
