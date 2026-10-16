@@ -12,3 +12,4 @@ painel/cache/
 coleta/cache/
 painel/coleta
 *.log
+docs/goatcounter-autohospedado.md
